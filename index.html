@@ -119,6 +119,32 @@
       padding: 12px 24px; font-size: 15px; font-weight: 600;
       min-height: 48px; width: 100%; cursor: pointer;
     }
+    .ai-input-row { display: flex; gap: 8px; align-items: flex-start; }
+    .ai-input-row .form-input { flex: 1; }
+    .btn-ai {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white; border: none; border-radius: var(--radius);
+      padding: 0 16px; font-size: 15px; font-weight: 600;
+      min-height: 48px; white-space: nowrap; cursor: pointer;
+      flex-shrink: 0;
+    }
+    .btn-ai:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ai-status {
+      margin-top: 8px; padding: 10px 14px;
+      border-radius: 8px; font-size: 14px;
+    }
+    .ai-status.loading { background: #ede9fe; color: #6d28d9; }
+    .ai-status.error   { background: #fee2e2; color: var(--error); }
+    .ai-status.ok      { background: #dcfce7; color: var(--success); }
+    .ai-spinner { display: inline-block; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .api-key-row { display: flex; gap: 8px; align-items: center; }
+    .api-key-row .form-input { flex: 1; font-family: monospace; font-size: 13px; }
+    .btn-icon-sm {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0 12px; min-height: 48px;
+      cursor: pointer; font-size: 18px; flex-shrink: 0; color: var(--text);
+    }
     .gap-8 { display: flex; flex-direction: column; gap: 8px; }
     .gap-12 { display: flex; flex-direction: column; gap: 12px; }
     .gap-16 { display: flex; flex-direction: column; gap: 16px; }
@@ -530,31 +556,35 @@
     <div class="content">
       <form id="add-card-form" novalidate>
         <div class="form-group">
-          <label class="form-label">English Sentence *</label>
-          <textarea class="form-textarea" id="field-sentence" placeholder="e.g. She was completely awestruck by the sunset." required></textarea>
+          <label class="form-label">Słówko angielskie *</label>
+          <div class="ai-input-row">
+            <input type="text" class="form-input" id="field-word" placeholder="np. awestruck" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+            <button type="button" class="btn-ai" id="btn-generate">✨ Generuj</button>
+          </div>
+          <div id="ai-status" class="ai-status" style="display:none"></div>
         </div>
         <div class="form-group">
-          <label class="form-label">Target Word *</label>
-          <input type="text" class="form-input" id="field-word" placeholder="e.g. awestruck" required>
-          <div id="word-warning" class="form-error" style="display:none">⚠ Word not found in sentence</div>
-          <div class="form-hint mt-8">Preview:</div>
-          <div class="sentence-preview" id="word-preview">Type the sentence and target word above...</div>
+          <label class="form-label">Zdanie po angielsku *</label>
+          <textarea class="form-textarea" id="field-sentence" placeholder="Wpisz słówko i kliknij Generuj — albo wpisz zdanie ręcznie." required></textarea>
+          <div id="word-warning" class="form-error" style="display:none">⚠ Słówko nie znalezione w zdaniu</div>
+          <div class="form-hint mt-8">Podgląd:</div>
+          <div class="sentence-preview" id="word-preview">Wpisz słówko i zdanie powyżej...</div>
         </div>
         <div class="form-group">
-          <label class="form-label">Polish Translation *</label>
-          <textarea class="form-textarea" id="field-translation" placeholder="e.g. Była całkowicie olśniona zachodem słońca." required></textarea>
+          <label class="form-label">Tłumaczenie po polsku *</label>
+          <textarea class="form-textarea" id="field-translation" placeholder="np. Była całkowicie olśniona zachodem słońca." required></textarea>
         </div>
         <div class="form-group">
-          <label class="form-label">Definition</label>
-          <input type="text" class="form-input" id="field-definition" placeholder="e.g. Filled with overwhelming wonder">
+          <label class="form-label">Definicja po angielsku</label>
+          <input type="text" class="form-input" id="field-definition" placeholder="np. Filled with overwhelming wonder">
         </div>
         <div class="form-group">
-          <label class="form-label">Memory Hook</label>
-          <input type="text" class="form-input" id="field-hook" placeholder="e.g. AWE + STRUCK = struck by awe">
+          <label class="form-label">Haczyk pamięciowy</label>
+          <input type="text" class="form-input" id="field-hook" placeholder="np. AWE + STRUCK = uderzony zachwytem">
         </div>
         <div class="form-group">
-          <label class="form-label">Tags</label>
-          <input type="text" class="form-input" id="field-tags-input" placeholder="Type tag and press comma or Enter">
+          <label class="form-label">Tagi</label>
+          <input type="text" class="form-input" id="field-tags-input" placeholder="Wpisz tag i naciśnij przecinek lub Enter">
           <div class="tag-chips" id="tag-chips-display"></div>
         </div>
         <div class="gap-8">
@@ -667,7 +697,18 @@
         <input type="time" class="form-input" id="setting-notif-time" value="09:00">
       </div>
       <div class="divider"></div>
-      <div class="section-title">Data</div>
+      <div class="section-title">AI — Automatyczne generowanie</div>
+      <div class="form-group">
+        <label class="form-label">Klucz API Claude</label>
+        <div class="toggle-sub" style="margin-bottom:8px">Pobierz bezpłatnie na <strong>console.anthropic.com</strong> → API Keys</div>
+        <div class="api-key-row">
+          <input type="password" class="form-input" id="setting-api-key" placeholder="sk-ant-api03-..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+          <button type="button" class="btn-icon-sm" id="btn-toggle-api-key" aria-label="Pokaż/ukryj klucz">👁</button>
+        </div>
+        <div class="form-hint" style="margin-top:6px">Klucz jest przechowywany tylko na Twoim urządzeniu.</div>
+      </div>
+      <div class="divider"></div>
+      <div class="section-title">Dane</div>
       <div class="gap-8">
         <button class="btn-secondary" id="btn-export">Export Backup (JSON)</button>
         <div class="form-group">
@@ -719,7 +760,7 @@ const State = {
   cards: [],
   studyHistory: [],
   exerciseHistory: [],
-  settings: { darkMode:false, dailyLimit:20, notificationsEnabled:false, notificationTime:'09:00', lastStudyDate:null, streak:0 },
+  settings: { darkMode:false, dailyLimit:20, notificationsEnabled:false, notificationTime:'09:00', lastStudyDate:null, streak:0, claudeApiKey:'' },
   session: null,
   exSession: null,
   editingCardId: null,
@@ -1197,6 +1238,73 @@ function renderExerciseResults() {
 }
 
 // ============ ADD / EDIT CARD ============
+// ============ AI GENERATION ============
+async function generateWithAI(word) {
+  const apiKey = State.settings.claudeApiKey;
+  const statusEl = document.getElementById('ai-status');
+  const btn = document.getElementById('btn-generate');
+  if (!apiKey) {
+    statusEl.className = 'ai-status error';
+    statusEl.textContent = '⚠ Brak klucza API. Wejdź w Ustawienia i wpisz klucz Claude.';
+    statusEl.style.display = 'block';
+    return;
+  }
+  if (!word.trim()) {
+    statusEl.className = 'ai-status error';
+    statusEl.textContent = '⚠ Wpisz słówko przed generowaniem.';
+    statusEl.style.display = 'block';
+    return;
+  }
+  btn.disabled = true;
+  statusEl.className = 'ai-status loading';
+  statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie i tłumaczenie...';
+  statusEl.style.display = 'block';
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-ipc': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 400,
+        messages: [{
+          role: 'user',
+          content: `For the English word or phrase "${word.trim()}", generate:
+1. One natural English sentence using this word in a real-life context (not too complex, max 20 words)
+2. Polish translation of that full sentence
+3. A simple one-line English definition (max 10 words)
+
+Respond ONLY with valid JSON in this exact format, no extra text:
+{"sentence":"...","translation":"...","definition":"..."}`
+        }]
+      })
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(()=>({error:{message:'Błąd '+resp.status}}));
+      throw new Error(err.error?.message || 'HTTP ' + resp.status);
+    }
+    const data = await resp.json();
+    const text = data.content[0].text.trim();
+    const json = JSON.parse(text);
+    if (!json.sentence || !json.translation) throw new Error('Nieprawidłowa odpowiedź AI');
+    document.getElementById('field-sentence').value = json.sentence;
+    document.getElementById('field-translation').value = json.translation;
+    if (json.definition) document.getElementById('field-definition').value = json.definition;
+    updateWordPreview();
+    statusEl.className = 'ai-status ok';
+    statusEl.textContent = '✓ Wygenerowano! Sprawdź i edytuj jeśli chcesz.';
+  } catch(err) {
+    statusEl.className = 'ai-status error';
+    statusEl.textContent = '✗ Błąd: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function renderAddCard() {
   const cardId=State.editingCardId;
   const card=cardId?State.cards.find(c=>c.id===cardId):null;
@@ -1211,6 +1319,7 @@ function renderAddCard() {
   renderTagChips();
   updateWordPreview();
   document.getElementById('word-warning').style.display='none';
+  document.getElementById('ai-status').style.display='none';
 }
 function renderTagChips() {
   document.getElementById('tag-chips-display').innerHTML=State.currentTags.map((t,i)=>
@@ -1367,6 +1476,7 @@ function renderSettings() {
   document.getElementById('setting-limit').value=State.settings.dailyLimit;
   document.getElementById('setting-notif-time').value=State.settings.notificationTime||'09:00';
   document.getElementById('notif-time-wrap').className='notification-time-wrap'+(State.settings.notificationsEnabled?' visible':'');
+  document.getElementById('setting-api-key').value=State.settings.claudeApiKey||'';
 }
 
 // ============ EXPORT / IMPORT ============
@@ -1447,9 +1557,17 @@ function setupEventListeners() {
     saveCards();
     alert('Marked '+wrongIds.size+' card(s) for review today.');
   });
-  // Add card form
+  // Add card form — AI generate button
+  document.getElementById('btn-generate').addEventListener('click',()=>{
+    const word = document.getElementById('field-word').value;
+    generateWithAI(word);
+  });
+  // Press Enter in word field → trigger generate (if API key set)
+  document.getElementById('field-word').addEventListener('keydown', e=>{
+    if(e.key==='Enter') { e.preventDefault(); if(State.settings.claudeApiKey) document.getElementById('btn-generate').click(); }
+  });
   document.getElementById('field-sentence').addEventListener('input',updateWordPreview);
-  document.getElementById('field-word').addEventListener('input',updateWordPreview);
+  document.getElementById('field-word').addEventListener('input',()=>{ document.getElementById('ai-status').style.display='none'; updateWordPreview(); });
   document.getElementById('add-card-form').addEventListener('submit',saveCard);
   document.getElementById('btn-cancel-add').addEventListener('click',()=>{ State.editingCardId=null; showScreen('screen-browse'); });
   document.getElementById('btn-delete-card').addEventListener('click',()=>{ if(State.editingCardId) deleteCard(State.editingCardId); });
@@ -1502,6 +1620,15 @@ function setupEventListeners() {
   });
   document.getElementById('setting-notif-time').addEventListener('change',e=>{
     State.settings.notificationTime=e.target.value; saveSettings();
+  });
+  // API key save (on change/blur)
+  document.getElementById('setting-api-key').addEventListener('change',e=>{
+    State.settings.claudeApiKey=e.target.value.trim(); saveSettings();
+  });
+  // Toggle API key visibility
+  document.getElementById('btn-toggle-api-key').addEventListener('click',()=>{
+    const inp=document.getElementById('setting-api-key');
+    inp.type = inp.type==='password' ? 'text' : 'password';
   });
   document.getElementById('btn-export').addEventListener('click',exportData);
   document.getElementById('import-json-file').addEventListener('change',e=>{
