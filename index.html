@@ -697,15 +697,15 @@
         <input type="time" class="form-input" id="setting-notif-time" value="09:00">
       </div>
       <div class="divider"></div>
-      <div class="section-title">AI — Automatyczne generowanie</div>
+      <div class="section-title">AI — Automatyczne generowanie (bezpłatne)</div>
       <div class="form-group">
-        <label class="form-label">Klucz API Claude</label>
-        <div class="toggle-sub" style="margin-bottom:8px">Pobierz bezpłatnie na <strong>console.anthropic.com</strong> → API Keys</div>
+        <label class="form-label">Klucz API Google Gemini</label>
+        <div class="toggle-sub" style="margin-bottom:8px">Pobierz za darmo na <strong>aistudio.google.com</strong> → Get API key</div>
         <div class="api-key-row">
-          <input type="password" class="form-input" id="setting-api-key" placeholder="sk-ant-api03-..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+          <input type="password" class="form-input" id="setting-api-key" placeholder="AIzaSy..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
           <button type="button" class="btn-icon-sm" id="btn-toggle-api-key" aria-label="Pokaż/ukryj klucz">👁</button>
         </div>
-        <div class="form-hint" style="margin-top:6px">Klucz jest przechowywany tylko na Twoim urządzeniu.</div>
+        <div class="form-hint" style="margin-top:6px">Bezpłatnie: 1500 generowań dziennie. Klucz przechowywany tylko na Twoim urządzeniu.</div>
       </div>
       <div class="divider"></div>
       <div class="section-title">Dane</div>
@@ -852,7 +852,7 @@ function applySM2(card, rating) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v1';
+const CACHE='vocab-v2';
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/']))));
 self.addEventListener('fetch',e=>e.respondWith(
   caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{
@@ -1245,7 +1245,7 @@ async function generateWithAI(word) {
   const btn = document.getElementById('btn-generate');
   if (!apiKey) {
     statusEl.className = 'ai-status error';
-    statusEl.textContent = '⚠ Brak klucza API. Wejdź w Ustawienia i wpisz klucz Claude.';
+    statusEl.textContent = '⚠ Brak klucza API. Wejdź w Ustawienia i wpisz klucz Gemini.';
     statusEl.style.display = 'block';
     return;
   }
@@ -1259,37 +1259,35 @@ async function generateWithAI(word) {
   statusEl.className = 'ai-status loading';
   statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie i tłumaczenie...';
   statusEl.style.display = 'block';
-  try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-ipc': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 400,
-        messages: [{
-          role: 'user',
-          content: `For the English word or phrase "${word.trim()}", generate:
+  const prompt = `For the English word or phrase "${word.trim()}", generate:
 1. One natural English sentence using this word in a real-life context (not too complex, max 20 words)
 2. Polish translation of that full sentence
 3. A simple one-line English definition (max 10 words)
 
 Respond ONLY with valid JSON in this exact format, no extra text:
-{"sentence":"...","translation":"...","definition":"..."}`
-        }]
-      })
-    });
+{"sentence":"...","translation":"...","definition":"..."}`;
+  try {
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+      }
+    );
     if (!resp.ok) {
-      const err = await resp.json().catch(()=>({error:{message:'Błąd '+resp.status}}));
-      throw new Error(err.error?.message || 'HTTP ' + resp.status);
+      const err = await resp.json().catch(()=>({}));
+      const msg = err.error?.message || 'Błąd HTTP ' + resp.status;
+      if (resp.status === 400) throw new Error('Zły klucz API lub zapytanie (400): ' + msg);
+      if (resp.status === 403) throw new Error('Klucz API nieprawidłowy lub brak uprawnień (403)');
+      if (resp.status === 429) throw new Error('Przekroczono limit zapytań — spróbuj za chwilę (429)');
+      throw new Error(msg);
     }
     const data = await resp.json();
-    const text = data.content[0].text.trim();
-    const json = JSON.parse(text);
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!raw) throw new Error('Pusta odpowiedź od AI');
+    const jsonStr = raw.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/```$/,'').trim();
+    const json = JSON.parse(jsonStr);
     if (!json.sentence || !json.translation) throw new Error('Nieprawidłowa odpowiedź AI');
     document.getElementById('field-sentence').value = json.sentence;
     document.getElementById('field-translation').value = json.translation;
