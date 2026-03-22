@@ -172,6 +172,18 @@
     }
     .card-back { transform: rotateY(180deg); }
     .target-word { color: var(--accent); font-weight: 700; }
+    .speak-row { display: flex; align-items: center; gap: 8px; }
+    .speak-row .sentence-display,
+    .speak-row .translation-text { flex: 1; }
+    .btn-speak {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 50%; width: 40px; height: 40px; min-width: 40px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; flex-shrink: 0; color: var(--accent);
+      transition: background 0.15s;
+    }
+    .btn-speak:active { background: var(--border); }
+    .btn-speak svg { width: 20px; height: 20px; }
     .sentence-display { font-size: 18px; line-height: 1.6; margin-bottom: auto; }
     .card-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text2); margin-bottom: 8px; }
     .translation-text { font-size: 22px; font-weight: 700; line-height: 1.4; margin-bottom: 12px; }
@@ -421,20 +433,30 @@
         <div class="card-container">
           <div class="card-inner" id="card-inner">
             <div class="card-front">
-              <div class="card-label">English Sentence</div>
-              <div class="sentence-display" id="review-sentence"></div>
+              <div class="card-label">Zdanie po angielsku</div>
+              <div class="speak-row">
+                <div class="sentence-display" id="review-sentence"></div>
+                <button class="btn-speak" id="btn-speak-sentence" aria-label="Odsłuchaj zdanie">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                </button>
+              </div>
               <div class="mt-16">
                 <div id="review-tags" class="tag-chips" style="margin-bottom:12px"></div>
-                <button class="btn-primary" id="btn-show-answer">Show Answer</button>
+                <button class="btn-primary" id="btn-show-answer">Pokaż odpowiedź</button>
               </div>
             </div>
             <div class="card-back">
-              <div class="card-label">Translation (Polish)</div>
-              <div class="translation-text" id="review-translation"></div>
-              <div class="card-label">Definition</div>
+              <div class="card-label">Tłumaczenie (Polski)</div>
+              <div class="speak-row">
+                <div class="translation-text" id="review-translation"></div>
+                <button class="btn-speak" id="btn-speak-word" aria-label="Odsłuchaj słowo">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                </button>
+              </div>
+              <div class="card-label">Definicja</div>
               <div class="definition-text" id="review-definition"></div>
               <div id="review-hook-wrap" style="display:none">
-                <div class="card-label">Memory Hook</div>
+                <div class="card-label">Haczyk pamięciowy</div>
                 <div class="hook-text" id="review-hook"></div>
               </div>
               <div class="rating-buttons">
@@ -559,6 +581,9 @@
           <label class="form-label">Słówko angielskie *</label>
           <div class="ai-input-row">
             <input type="text" class="form-input" id="field-word" placeholder="np. awestruck" required autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+            <button type="button" class="btn-speak" id="btn-speak-addword" aria-label="Odsłuchaj słowo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            </button>
             <button type="button" class="btn-ai" id="btn-generate">✨ Generuj</button>
           </div>
           <div id="ai-status" class="ai-status" style="display:none"></div>
@@ -839,10 +864,30 @@ function applySM2(card, rating) {
 }
 
 // ============ SERVICE WORKER ============
+// ============ TEXT-TO-SPEECH ============
+function speak(text, rate = 0.85) {
+  if (!text || !window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text.trim());
+  utt.lang = 'en-US';
+  utt.rate = rate;
+  utt.pitch = 1;
+  const voices = window.speechSynthesis.getVoices();
+  const engVoice = voices.find(v => v.lang === 'en-US') ||
+                   voices.find(v => v.lang.startsWith('en'));
+  if (engVoice) utt.voice = engVoice;
+  window.speechSynthesis.speak(utt);
+}
+// iOS wymaga wczytania głosów po zdarzeniu
+if (window.speechSynthesis) {
+  window.speechSynthesis.getVoices();
+  window.speechSynthesis.addEventListener('voiceschanged', () => window.speechSynthesis.getVoices());
+}
+
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v6';
+const CACHE='vocab-v7';
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/']))));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
 self.addEventListener('fetch',e=>{
@@ -1111,13 +1156,25 @@ function renderExercise() {
   else renderTextExercise(ex, area);
 }
 
+function makeSpeakBtn(textFn) {
+  const btn=document.createElement('button');
+  btn.className='btn-speak'; btn.setAttribute('aria-label','Odsłuchaj');
+  btn.type='button';
+  btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
+  btn.addEventListener('click',()=>speak(textFn()));
+  return btn;
+}
+
 function renderMCExercise(ex, area) {
   const card=document.createElement('div'); card.className='exercise-card';
-  const typeLabel=document.createElement('div'); typeLabel.className='card-label'; typeLabel.textContent='Multiple Choice — choose the Polish translation';
+  const typeLabel=document.createElement('div'); typeLabel.className='card-label'; typeLabel.textContent='Wybierz polskie tłumaczenie';
   card.appendChild(typeLabel);
+  const qRow=document.createElement('div'); qRow.className='speak-row';
   const q=document.createElement('div'); q.className='exercise-question';
   q.innerHTML=highlightWord(escHtml(ex.card.sentence),escHtml(ex.card.targetWord));
-  card.appendChild(q);
+  qRow.appendChild(q);
+  qRow.appendChild(makeSpeakBtn(()=>ex.card.sentence));
+  card.appendChild(qRow);
   const opts=ex.options||[];
   opts.forEach(opt=>{
     const btn=document.createElement('button'); btn.className='mc-option'; btn.textContent=opt;
@@ -1143,13 +1200,17 @@ function handleMCAnswer(chosen, ex, card) {
 function renderTextExercise(ex, area) {
   const card=document.createElement('div'); card.className='exercise-card';
   let labelText='';
-  if(ex.type===2) labelText='Fill in the blank — type the missing English word';
-  else if(ex.type===3) labelText='Polish → English — type the English word';
-  else if(ex.type===4) labelText='Memory Hook — what word does this describe?';
+  if(ex.type===2) labelText='Uzupełnij lukę — wpisz brakujące słowo';
+  else if(ex.type===3) labelText='Polski → Angielski — wpisz angielskie słowo';
+  else if(ex.type===4) labelText='Haczyk pamięciowy — jakie to słowo?';
   const typeLabel=document.createElement('div'); typeLabel.className='card-label'; typeLabel.textContent=labelText;
   card.appendChild(typeLabel);
+  const qRow=document.createElement('div'); qRow.className='speak-row';
   const q=document.createElement('div'); q.className='exercise-question'; q.textContent=ex.question||'';
-  card.appendChild(q);
+  qRow.appendChild(q);
+  // Dla type 2 odtwórz zdanie po angielsku; type 3/4 nie ma sensu czytać po polsku
+  if(ex.type===2) qRow.appendChild(makeSpeakBtn(()=>ex.card.sentence));
+  card.appendChild(qRow);
   if(ex.type===4 && ex.hint) {
     const hint=document.createElement('div'); hint.className='definition-text';
     hint.textContent='Polish: '+ex.hint; card.appendChild(hint);
@@ -1179,7 +1240,15 @@ function handleTextAnswer(ex, input, card, checkBtn) {
 function showFeedback(card, correct, answer) {
   const fb=document.createElement('div');
   fb.className='feedback-box '+(correct?'feedback-correct':'feedback-wrong');
-  fb.textContent=correct?'Correct! ✓':'Wrong. Correct answer: '+answer;
+  const row=document.createElement('div'); row.style.cssText='display:flex;align-items:center;gap:10px;';
+  const msg=document.createElement('span');
+  msg.textContent=correct?'Dobrze! ✓':'Źle. Poprawna odpowiedź: '+answer;
+  row.appendChild(msg);
+  // przycisk odsłuchania poprawnej odpowiedzi (tylko angielskie słowa)
+  if(/^[a-zA-Z]/.test(answer)) {
+    row.appendChild(makeSpeakBtn(()=>answer));
+  }
+  fb.appendChild(row);
   card.appendChild(fb);
 }
 
@@ -1531,9 +1600,19 @@ function setupEventListeners() {
   // Home buttons
   document.getElementById('btn-start-review').addEventListener('click',startReview);
   document.getElementById('btn-start-exercises').addEventListener('click',()=>showScreen('screen-exercise-config'));
+  // Review — speak buttons
+  document.getElementById('btn-speak-sentence').addEventListener('click',()=>{
+    const txt = document.getElementById('review-sentence').textContent;
+    speak(txt);
+  });
+  document.getElementById('btn-speak-word').addEventListener('click',()=>{
+    if (State.session?.current) speak(State.session.current.targetWord);
+  });
   // Review
   document.getElementById('btn-show-answer').addEventListener('click',()=>{
     document.getElementById('card-inner').classList.add('flipped');
+    // auto-odtwórz słówko po pokazaniu odpowiedzi
+    if (State.session?.current) speak(State.session.current.targetWord, 0.8);
   });
   document.querySelectorAll('.rating-buttons [data-rating]').forEach(btn=>{
     btn.addEventListener('click',()=>handleRating(btn.dataset.rating));
@@ -1565,6 +1644,10 @@ function setupEventListeners() {
     alert('Marked '+wrongIds.size+' card(s) for review today.');
   });
   // Add card form — AI generate button
+  document.getElementById('btn-speak-addword').addEventListener('click',()=>{
+    const word = document.getElementById('field-word').value.trim();
+    if (word) speak(word);
+  });
   document.getElementById('btn-generate').addEventListener('click',()=>{
     const word = document.getElementById('field-word').value;
     generateWithAI(word);
