@@ -485,6 +485,10 @@
   <!-- ===== EXERCISE CONFIG SCREEN ===== -->
   <div id="screen-exercise-config" class="screen">
     <div class="screen-header">
+      <button class="back-btn" id="btn-ex-config-back">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        Home
+      </button>
       <h2>Exercise Setup</h2>
     </div>
     <div class="content gap-16">
@@ -543,6 +547,10 @@
   <!-- ===== EXERCISE RESULTS SCREEN ===== -->
   <div id="screen-exercise-results" class="screen">
     <div class="screen-header">
+      <button class="back-btn" id="btn-results-back">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        Home
+      </button>
       <h2>Results</h2>
     </div>
     <div class="content">
@@ -887,7 +895,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v7';
+const CACHE='vocab-v8';
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/']))));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
 self.addEventListener('fetch',e=>{
@@ -1019,6 +1027,7 @@ function renderReview() {
   document.getElementById('review-card-area').style.display='block';
   document.getElementById('review-complete').style.display='none';
   const card=queue[currentIndex];
+  State.session.current=card;
   const pct=total?Math.round((currentIndex/total)*100):0;
   document.getElementById('review-progress-label').textContent=`${currentIndex+1} / ${total}`;
   document.getElementById('review-progress-fill').style.width=pct+'%';
@@ -1619,6 +1628,9 @@ function setupEventListeners() {
   });
   document.getElementById('btn-review-back').addEventListener('click',()=>{ State.session=null; showScreen('screen-home'); });
   document.getElementById('btn-review-done').addEventListener('click',()=>{ State.session=null; showScreen('screen-home'); });
+  document.getElementById('btn-ex-config-back').addEventListener('click',()=>showScreen('screen-home'));
+  document.getElementById('btn-results-back').addEventListener('click',()=>{ State.exSession=null; showScreen('screen-home'); });
+  document.getElementById('btn-add-back').addEventListener('click',()=>{ State.editingCardId=null; showScreen('screen-browse'); });
   // Swipe on review card
   setupSwipe(document.getElementById('card-inner'),
     ()=>{ if(document.getElementById('card-inner').classList.contains('flipped')) handleRating('again'); },
