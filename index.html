@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>VocabPWA</title>
+  <meta name="theme-color" content="#4f46e5">
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="VocabPWA">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%234f46e5'/><text x='96' y='130' font-size='100' text-anchor='middle' fill='white'>📚</text></svg>">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --accent: #4f46e5;
+      --accent-light: #818cf8;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface2: #f1f5f9;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text2: #64748b;
+      --success: #16a34a;
+      --error: #dc2626;
+      --warning: #d97706;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+    }
+    [data-theme="dark"] {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #334155;
+      --border: #475569;
+      --text: #f1f5f9;
+      --text2: #94a3b8;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+    .app {
+      max-width: 480px;
+      margin: 0 auto;
+      min-height: 100vh;
+      position: relative;
+      overflow: hidden;
+    }
+    .screen {
+      position: absolute;
+      inset: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding-bottom: calc(80px + env(safe-area-inset-bottom));
+      display: none;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .screen.active {
+      display: block;
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .screen-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 16px 8px;
+      padding-top: calc(16px + env(safe-area-inset-top));
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .screen-header h1 { font-size: 20px; font-weight: 700; }
+    .screen-header h2 { font-size: 18px; font-weight: 600; }
+    .icon-btn {
+      width: 40px; height: 40px;
+      border: none; background: var(--surface2);
+      border-radius: 10px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text);
+    }
+    .icon-btn svg { width: 20px; height: 20px; }
+    .content { padding: 16px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+    .stat-card {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 16px 8px; text-align: center; box-shadow: var(--shadow);
+    }
+    .stat-number { font-size: 28px; font-weight: 700; color: var(--accent); }
+    .stat-label { font-size: 11px; color: var(--text2); margin-top: 4px; }
+    .btn-primary {
+      background: var(--accent); color: white;
+      border: none; border-radius: var(--radius);
+      padding: 14px 24px; font-size: 16px; font-weight: 600;
+      min-height: 52px; width: 100%; cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn-primary:disabled { background: var(--text2); cursor: not-allowed; }
+    .btn-primary:not(:disabled):active { opacity: 0.85; }
+    .btn-secondary {
+      background: transparent; color: var(--accent);
+      border: 2px solid var(--accent); border-radius: var(--radius);
+      padding: 12px 24px; font-size: 16px; font-weight: 600;
+      min-height: 52px; width: 100%; cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn-secondary:active { opacity: 0.75; }
+    .btn-danger {
+      background: #fee2e2; color: var(--error);
+      border: none; border-radius: var(--radius);
+      padding: 12px 24px; font-size: 15px; font-weight: 600;
+      min-height: 48px; width: 100%; cursor: pointer;
+    }
+    .gap-8 { display: flex; flex-direction: column; gap: 8px; }
+    .gap-12 { display: flex; flex-direction: column; gap: 12px; }
+    .gap-16 { display: flex; flex-direction: column; gap: 16px; }
+    .mt-8 { margin-top: 8px; }
+    .mt-12 { margin-top: 12px; }
+    .mt-16 { margin-top: 16px; }
+    .mt-24 { margin-top: 24px; }
+    .card-container { perspective: 1000px; height: 400px; margin-bottom: 16px; }
+    .card-inner {
+      position: relative; width: 100%; height: 100%;
+      transform-style: preserve-3d;
+      transition: transform 0.4s ease;
+    }
+    .card-inner.flipped { transform: rotateY(180deg); }
+    .card-front, .card-back {
+      position: absolute; width: 100%; height: 100%;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 24px;
+      box-shadow: var(--shadow);
+      display: flex; flex-direction: column;
+      overflow-y: auto;
+    }
+    .card-back { transform: rotateY(180deg); }
+    .target-word { color: var(--accent); font-weight: 700; }
+    .sentence-display { font-size: 18px; line-height: 1.6; margin-bottom: auto; }
+    .card-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text2); margin-bottom: 8px; }
+    .translation-text { font-size: 22px; font-weight: 700; line-height: 1.4; margin-bottom: 12px; }
+    .definition-text { font-size: 14px; color: var(--text2); margin-bottom: 8px; line-height: 1.5; }
+    .hook-text { font-size: 14px; color: var(--warning); font-style: italic; background: #fef3c7; padding: 8px 12px; border-radius: 8px; }
+    .rating-buttons {
+      display: grid; grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 8px; margin-top: 16px;
+    }
+    .btn-again, .btn-hard, .btn-good, .btn-easy {
+      border: none; border-radius: 8px; padding: 12px 4px;
+      font-weight: 600; font-size: 14px; min-height: 44px; cursor: pointer;
+    }
+    .btn-again { background: #fee2e2; color: #dc2626; }
+    .btn-hard { background: #fef3c7; color: #d97706; }
+    .btn-good { background: #dcfce7; color: #16a34a; }
+    .btn-easy { background: #dbeafe; color: #2563eb; }
+    .progress-bar { height: 4px; background: var(--border); border-radius: 2px; margin-bottom: 8px; }
+    .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
+    .progress-label { font-size: 13px; color: var(--text2); margin-bottom: 12px; }
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 480px;
+      background: var(--surface); border-top: 1px solid var(--border);
+      display: flex; padding-bottom: env(safe-area-inset-bottom); z-index: 100;
+    }
+    .nav-btn {
+      flex: 1; min-height: 56px; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; font-size: 10px;
+      color: var(--text2); border: none; background: none; cursor: pointer; gap: 4px;
+    }
+    .nav-btn.active { color: var(--accent); }
+    .nav-btn svg { width: 24px; height: 24px; }
+    .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+    .form-label { font-size: 14px; font-weight: 600; color: var(--text); }
+    .form-input, .form-textarea, .form-select {
+      background: var(--surface); border: 1.5px solid var(--border);
+      border-radius: 10px; padding: 12px; font-size: 15px; color: var(--text);
+      width: 100%; font-family: inherit;
+      transition: border-color 0.15s;
+    }
+    .form-input:focus, .form-textarea:focus, .form-select:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .form-textarea { resize: vertical; min-height: 80px; }
+    .form-hint { font-size: 12px; color: var(--text2); }
+    .form-error { font-size: 12px; color: var(--error); }
+    .tag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .tag-chip {
+      background: var(--accent); color: white;
+      border-radius: 20px; padding: 4px 10px; font-size: 12px; font-weight: 500;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .tag-chip-remove {
+      background: none; border: none; color: white; cursor: pointer;
+      padding: 0; line-height: 1; font-size: 14px; display: flex;
+    }
+    .sentence-preview {
+      background: var(--surface2); border-radius: 10px; padding: 12px;
+      font-size: 15px; line-height: 1.6; min-height: 48px; color: var(--text);
+    }
+    .card-row {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 14px; box-shadow: var(--shadow); cursor: pointer;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .card-row-main { flex: 1; min-width: 0; }
+    .card-row-word { font-weight: 600; font-size: 15px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-row-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .ease-badge {
+      font-size: 11px; font-weight: 600; padding: 2px 7px;
+      border-radius: 20px; background: var(--surface2); color: var(--text2);
+    }
+    .due-badge { font-size: 11px; color: var(--text2); }
+    .tag-pill {
+      background: var(--surface2); color: var(--text2);
+      border-radius: 20px; padding: 2px 8px; font-size: 11px;
+    }
+    .search-input {
+      background: var(--surface); border: 1.5px solid var(--border);
+      border-radius: 10px; padding: 10px 14px; font-size: 15px;
+      color: var(--text); width: 100%; font-family: inherit;
+    }
+    .search-input:focus { outline: none; border-color: var(--accent); }
+    .filter-row { display: flex; gap: 8px; align-items: center; }
+    .filter-select {
+      background: var(--surface); border: 1.5px solid var(--border);
+      border-radius: 8px; padding: 8px 10px; font-size: 13px; color: var(--text);
+      flex: 1; font-family: inherit;
+    }
+    .sort-btn {
+      background: var(--surface2); border: none; border-radius: 8px;
+      padding: 8px 12px; font-size: 13px; color: var(--text2); cursor: pointer;
+      white-space: nowrap;
+    }
+    .sort-btn.active { background: var(--accent); color: white; }
+    .exercise-card {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 20px; box-shadow: var(--shadow); margin-bottom: 16px;
+    }
+    .exercise-question { font-size: 17px; line-height: 1.6; margin-bottom: 16px; }
+    .mc-option {
+      display: block; width: 100%; text-align: left;
+      background: var(--surface2); border: 2px solid var(--border);
+      border-radius: 10px; padding: 12px 16px; font-size: 15px;
+      cursor: pointer; margin-bottom: 8px; color: var(--text);
+      font-family: inherit; transition: border-color 0.15s;
+    }
+    .mc-option:active { border-color: var(--accent); }
+    .mc-option.correct { background: #dcfce7; border-color: var(--success); color: var(--success); }
+    .mc-option.wrong { background: #fee2e2; border-color: var(--error); color: var(--error); }
+    .mc-option.reveal { background: #dcfce7; border-color: var(--success); }
+    .feedback-box { border-radius: 10px; padding: 12px 16px; font-size: 14px; font-weight: 500; margin-bottom: 12px; }
+    .feedback-correct { background: #dcfce7; color: var(--success); }
+    .feedback-wrong { background: #fee2e2; color: var(--error); }
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 0; border-bottom: 1px solid var(--border);
+    }
+    .toggle-label { font-size: 15px; font-weight: 500; }
+    .toggle-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+    .toggle {
+      width: 48px; height: 28px; border-radius: 14px; border: none;
+      background: var(--border); cursor: pointer; position: relative;
+      transition: background 0.2s; flex-shrink: 0;
+    }
+    .toggle::after {
+      content: ''; position: absolute; top: 3px; left: 3px;
+      width: 22px; height: 22px; border-radius: 11px; background: white;
+      transition: transform 0.2s;
+    }
+    .toggle.on { background: var(--accent); }
+    .toggle.on::after { transform: translateX(20px); }
+    .section-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); margin-bottom: 12px; }
+    .results-score { text-align: center; padding: 24px 0; }
+    .results-score-num { font-size: 56px; font-weight: 800; color: var(--accent); }
+    .results-score-label { font-size: 16px; color: var(--text2); margin-top: 4px; }
+    .wrong-item { background: var(--surface); border-radius: 10px; padding: 12px; margin-bottom: 8px; box-shadow: var(--shadow); }
+    .wrong-word { font-weight: 600; color: var(--error); margin-bottom: 4px; }
+    .wrong-answer { font-size: 13px; color: var(--text2); }
+    .radio-group { display: flex; flex-direction: column; gap: 8px; }
+    .radio-option {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px; background: var(--surface2); border-radius: 10px;
+      cursor: pointer; font-size: 15px;
+    }
+    .radio-option input { width: 18px; height: 18px; accent-color: var(--accent); }
+    .checkbox-option {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px; background: var(--surface2); border-radius: 10px;
+      cursor: pointer; font-size: 15px;
+    }
+    .checkbox-option input { width: 18px; height: 18px; accent-color: var(--accent); }
+    .checkbox-option.disabled { opacity: 0.5; cursor: not-allowed; }
+    .divider { height: 1px; background: var(--border); margin: 16px 0; }
+    .session-complete { text-align: center; padding: 40px 24px; }
+    .session-complete-icon { font-size: 64px; margin-bottom: 16px; }
+    .session-complete h2 { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+    .session-complete p { color: var(--text2); font-size: 16px; }
+    .collapsible-header {
+      display: flex; align-items: center; justify-content: space-between;
+      cursor: pointer; padding: 12px 0; font-weight: 600; font-size: 15px;
+    }
+    .collapsible-body { display: none; }
+    .collapsible-body.open { display: block; }
+    .stats-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .stats-table td, .stats-table th { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+    .stats-table th { font-weight: 600; color: var(--text2); font-size: 12px; text-transform: uppercase; }
+    canvas { display: block; width: 100%; border-radius: 8px; }
+    .chart-wrap { background: var(--surface); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
+    .empty-state { text-align: center; padding: 48px 24px; color: var(--text2); }
+    .empty-state-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-state p { font-size: 15px; line-height: 1.6; }
+    .interval-bar-wrap { margin-bottom: 8px; }
+    .interval-bar-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+    .interval-bar-track { height: 10px; background: var(--border); border-radius: 5px; }
+    .interval-bar-fill { height: 100%; border-radius: 5px; background: var(--accent); transition: width 0.5s; }
+    .hardest-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .back-btn {
+      background: none; border: none; color: var(--accent); cursor: pointer;
+      font-size: 15px; font-weight: 500; display: flex; align-items: center; gap: 4px; padding: 0;
+    }
+    .notification-time-wrap { margin-top: 12px; display: none; }
+    .notification-time-wrap.visible { display: block; }
+    .import-section { background: var(--surface2); border-radius: var(--radius); padding: 16px; }
+    .count-badge {
+      background: var(--surface2); border-radius: 20px; padding: 2px 10px;
+      font-size: 13px; color: var(--text2); font-weight: 500;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .card-inner, .screen, .progress-fill { transition: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== HOME SCREEN ===== -->
+  <div id="screen-home" class="screen active">
+    <div class="screen-header">
+      <h1>VocabPWA 📚</h1>
+      <button class="icon-btn" id="btn-dark-toggle" aria-label="Toggle dark mode">
+        <svg id="icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        <svg id="icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
+    </div>
+    <div class="content">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-number" id="home-due">0</div>
+          <div class="stat-label">Due Today</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="home-streak">0🔥</div>
+          <div class="stat-label">Day Streak</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="home-learned">0</div>
+          <div class="stat-label">Learned</div>
+        </div>
+      </div>
+      <div class="gap-8">
+        <button class="btn-primary" id="btn-start-review">Review 0 Cards</button>
+        <button class="btn-secondary" id="btn-start-exercises">Start Exercises</button>
+      </div>
+      <div class="mt-24">
+        <div class="section-title">14-Day Activity</div>
+        <div class="chart-wrap">
+          <canvas id="home-chart" height="120"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== REVIEW SCREEN ===== -->
+  <div id="screen-review" class="screen">
+    <div class="screen-header">
+      <button class="back-btn" id="btn-review-back">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        Home
+      </button>
+      <span id="review-progress-label" class="progress-label" style="margin:0">0/0</span>
+    </div>
+    <div class="content">
+      <div class="progress-bar"><div class="progress-fill" id="review-progress-fill" style="width:0%"></div></div>
+      <div id="review-card-area">
+        <div class="card-container">
+          <div class="card-inner" id="card-inner">
+            <div class="card-front">
+              <div class="card-label">English Sentence</div>
+              <div class="sentence-display" id="review-sentence"></div>
+              <div class="mt-16">
+                <div id="review-tags" class="tag-chips" style="margin-bottom:12px"></div>
+                <button class="btn-primary" id="btn-show-answer">Show Answer</button>
+              </div>
+            </div>
+            <div class="card-back">
+              <div class="card-label">Translation (Polish)</div>
+              <div class="translation-text" id="review-translation"></div>
+              <div class="card-label">Definition</div>
+              <div class="definition-text" id="review-definition"></div>
+              <div id="review-hook-wrap" style="display:none">
+                <div class="card-label">Memory Hook</div>
+                <div class="hook-text" id="review-hook"></div>
+              </div>
+              <div class="rating-buttons">
+                <button class="btn-again" data-rating="again">Again</button>
+                <button class="btn-hard" data-rating="hard">Hard</button>
+                <button class="btn-good" data-rating="good">Good</button>
+                <button class="btn-easy" data-rating="easy">Easy</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="review-complete" style="display:none">
+        <div class="session-complete">
+          <div class="session-complete-icon">🎉</div>
+          <h2>Session Complete!</h2>
+          <p id="review-complete-msg">You reviewed 0 cards.</p>
+          <div class="mt-24 gap-8">
+            <button class="btn-primary" id="btn-review-done">Back to Home</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== EXERCISE CONFIG SCREEN ===== -->
+  <div id="screen-exercise-config" class="screen">
+    <div class="screen-header">
+      <h2>Exercise Setup</h2>
+    </div>
+    <div class="content gap-16">
+      <div>
+        <div class="section-title">Card Pool</div>
+        <div class="radio-group">
+          <label class="radio-option"><input type="radio" name="ex-pool" value="all" checked> All cards (<span id="ex-pool-all-count">0</span>)</label>
+          <label class="radio-option"><input type="radio" name="ex-pool" value="due"> Due today (<span id="ex-pool-due-count">0</span>)</label>
+          <label class="radio-option"><input type="radio" name="ex-pool" value="tag"> By tag</label>
+        </div>
+        <div id="ex-tag-wrap" style="display:none; margin-top:8px">
+          <select class="form-select" id="ex-tag-select">
+            <option value="">Select a tag...</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <div class="section-title">Exercise Types</div>
+        <div class="gap-8" id="ex-type-checkboxes">
+          <label class="checkbox-option"><input type="checkbox" id="ex-type-1" checked> Type 1: Multiple choice (English→Polish)</label>
+          <label class="checkbox-option"><input type="checkbox" id="ex-type-2" checked> Type 2: Fill in the blank</label>
+          <label class="checkbox-option"><input type="checkbox" id="ex-type-3" checked> Type 3: Polish→English word</label>
+          <label class="checkbox-option" id="ex-type-4-label"><input type="checkbox" id="ex-type-4"> Type 4: Memory hook recall</label>
+        </div>
+      </div>
+      <div>
+        <div class="section-title">Session Length</div>
+        <div class="radio-group">
+          <label class="radio-option"><input type="radio" name="ex-length" value="10" checked> 10 exercises</label>
+          <label class="radio-option"><input type="radio" name="ex-length" value="20"> 20 exercises</label>
+          <label class="radio-option"><input type="radio" name="ex-length" value="custom"> Custom</label>
+        </div>
+        <div id="ex-custom-wrap" style="display:none; margin-top:8px">
+          <input type="number" class="form-input" id="ex-custom-count" min="1" max="100" value="15" placeholder="Number of exercises">
+        </div>
+      </div>
+      <button class="btn-primary" id="btn-start-ex-session">Start Session</button>
+    </div>
+  </div>
+
+  <!-- ===== EXERCISE SESSION SCREEN ===== -->
+  <div id="screen-exercise" class="screen">
+    <div class="screen-header">
+      <button class="back-btn" id="btn-ex-back">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        Exit
+      </button>
+      <span id="ex-progress-label" class="progress-label" style="margin:0">0/0</span>
+    </div>
+    <div class="content">
+      <div class="progress-bar"><div class="progress-fill" id="ex-progress-fill" style="width:0%"></div></div>
+      <div id="ex-area"></div>
+    </div>
+  </div>
+
+  <!-- ===== EXERCISE RESULTS SCREEN ===== -->
+  <div id="screen-exercise-results" class="screen">
+    <div class="screen-header">
+      <h2>Results</h2>
+    </div>
+    <div class="content">
+      <div class="results-score">
+        <div class="results-score-num" id="results-score">0/0</div>
+        <div class="results-score-label">correct answers</div>
+      </div>
+      <div class="section-title">By Exercise Type</div>
+      <div id="results-breakdown"></div>
+      <div class="mt-16" id="results-wrong-wrap" style="display:none">
+        <div class="section-title">Wrong Answers</div>
+        <div id="results-wrong-list"></div>
+        <button class="btn-secondary mt-12" id="btn-mark-review">Mark wrong ones for review</button>
+      </div>
+      <div class="mt-16">
+        <button class="btn-primary" id="btn-results-done">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ADD / EDIT CARD SCREEN ===== -->
+  <div id="screen-add" class="screen">
+    <div class="screen-header">
+      <button class="back-btn" id="btn-add-back">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        Back
+      </button>
+      <h2 id="add-title">Add Card</h2>
+      <button class="icon-btn" id="btn-delete-card" style="display:none" aria-label="Delete card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
+    </div>
+    <div class="content">
+      <form id="add-card-form" novalidate>
+        <div class="form-group">
+          <label class="form-label">English Sentence *</label>
+          <textarea class="form-textarea" id="field-sentence" placeholder="e.g. She was completely awestruck by the sunset." required></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Target Word *</label>
+          <input type="text" class="form-input" id="field-word" placeholder="e.g. awestruck" required>
+          <div id="word-warning" class="form-error" style="display:none">⚠ Word not found in sentence</div>
+          <div class="form-hint mt-8">Preview:</div>
+          <div class="sentence-preview" id="word-preview">Type the sentence and target word above...</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Polish Translation *</label>
+          <textarea class="form-textarea" id="field-translation" placeholder="e.g. Była całkowicie olśniona zachodem słońca." required></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Definition</label>
+          <input type="text" class="form-input" id="field-definition" placeholder="e.g. Filled with overwhelming wonder">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Memory Hook</label>
+          <input type="text" class="form-input" id="field-hook" placeholder="e.g. AWE + STRUCK = struck by awe">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tags</label>
+          <input type="text" class="form-input" id="field-tags-input" placeholder="Type tag and press comma or Enter">
+          <div class="tag-chips" id="tag-chips-display"></div>
+        </div>
+        <div class="gap-8">
+          <button type="submit" class="btn-primary" id="btn-save-card">Save Card</button>
+          <button type="button" class="btn-secondary" id="btn-cancel-add">Cancel</button>
+        </div>
+      </form>
+      <div class="divider"></div>
+      <div>
+        <div class="collapsible-header" id="import-toggle">
+          <span>Bulk Import</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="collapsible-body" id="import-body">
+          <div class="import-section">
+            <div class="form-hint" style="margin-bottom:10px">Format: <strong>word | sentence | translation</strong> — one per line</div>
+            <textarea class="form-textarea" id="import-text" placeholder="awestruck | She was awestruck by the view. | Była olśniona widokiem." style="min-height:120px"></textarea>
+            <button type="button" class="btn-secondary mt-8" id="btn-import-text">Import Lines</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== BROWSE SCREEN ===== -->
+  <div id="screen-browse" class="screen">
+    <div class="screen-header">
+      <h2>Card Browser</h2>
+      <span class="count-badge" id="browse-count">0</span>
+    </div>
+    <div class="content">
+      <div class="gap-8" style="margin-bottom:12px">
+        <input type="search" class="search-input" id="browse-search" placeholder="Search cards...">
+        <div class="filter-row">
+          <select class="filter-select" id="browse-tag-filter">
+            <option value="">All tags</option>
+          </select>
+          <button class="sort-btn active" id="sort-due">Due</button>
+          <button class="sort-btn" id="sort-ease">Ease</button>
+          <button class="sort-btn" id="sort-added">Added</button>
+        </div>
+      </div>
+      <div id="browse-list" class="gap-8"></div>
+    </div>
+  </div>
+
+  <!-- ===== STATS SCREEN ===== -->
+  <div id="screen-stats" class="screen">
+    <div class="screen-header">
+      <h2>Statistics</h2>
+    </div>
+    <div class="content gap-16">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-number" id="stats-total">0</div>
+          <div class="stat-label">Total Cards</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stats-reviews">0</div>
+          <div class="stat-label">Reviews</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stats-retention">0%</div>
+          <div class="stat-label">Retention</div>
+        </div>
+      </div>
+      <div>
+        <div class="section-title">Cards by Stage</div>
+        <div id="stats-stages"></div>
+      </div>
+      <div class="chart-wrap">
+        <div class="section-title">14-Day Activity</div>
+        <canvas id="stats-chart" height="120"></canvas>
+      </div>
+      <div>
+        <div class="section-title">Top 10 Hardest Words</div>
+        <div id="stats-hardest"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SETTINGS SCREEN ===== -->
+  <div id="screen-settings" class="screen">
+    <div class="screen-header">
+      <h2>Settings</h2>
+    </div>
+    <div class="content">
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Dark Mode</div>
+        </div>
+        <button class="toggle" id="toggle-dark" aria-label="Dark mode"></button>
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Daily Review Limit</div>
+          <div class="toggle-sub">Max cards per day</div>
+        </div>
+        <input type="number" class="form-input" id="setting-limit" min="1" max="500" style="width:80px; text-align:center; padding:8px">
+      </div>
+      <div class="toggle-row">
+        <div>
+          <div class="toggle-label">Notifications</div>
+          <div class="toggle-sub">Daily reminder</div>
+        </div>
+        <button class="toggle" id="toggle-notif" aria-label="Notifications"></button>
+      </div>
+      <div class="notification-time-wrap" id="notif-time-wrap">
+        <label class="form-label">Reminder Time</label>
+        <input type="time" class="form-input" id="setting-notif-time" value="09:00">
+      </div>
+      <div class="divider"></div>
+      <div class="section-title">Data</div>
+      <div class="gap-8">
+        <button class="btn-secondary" id="btn-export">Export Backup (JSON)</button>
+        <div class="form-group">
+          <label class="form-label">Import from JSON backup</label>
+          <input type="file" id="import-json-file" accept=".json" class="form-input" style="padding:8px">
+        </div>
+        <button class="btn-danger" id="btn-reset">Reset All Data</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== BOTTOM NAV ===== -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-screen="screen-home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      Home
+    </button>
+    <button class="nav-btn" data-screen="screen-browse">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      Browse
+    </button>
+    <button class="nav-btn" data-screen="screen-add" data-action="new-card">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      Add
+    </button>
+    <button class="nav-btn" data-screen="screen-stats">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      Stats
+    </button>
+    <button class="nav-btn" data-screen="screen-settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      Settings
+    </button>
+  </nav>
+</div>
+
+<script>
+// ============ SAMPLE CARDS ============
+const SAMPLE_CARDS = [
+  { sentence:"She was completely awestruck by the beauty of the northern lights.", targetWord:"awestruck", translation:"Była całkowicie olśniona pięknem zorzy polarnej.", definition:"Filled with overwhelming wonder or admiration", memoryHook:"AWE + STRUCK — struck by awe like lightning", tags:["emotions","adjectives"] },
+  { sentence:"He tends to procrastinate when faced with difficult tasks.", targetWord:"procrastinate", translation:"Ma tendencję do odkładania trudnych zadań na później.", definition:"To delay or postpone doing something", memoryHook:"pro-CRAST-inate — putting things off until the crust of tomorrow", tags:["behaviour","verbs"] },
+  { sentence:"The new policy will significantly bolster our cybersecurity defenses.", targetWord:"bolster", translation:"Nowa polityka znacząco wzmocni nasze zabezpieczenia.", definition:"To strengthen or support something", memoryHook:"BOLSTER = bold + stronger", tags:["business","verbs"] },
+  { sentence:"I came across a serendipitous discovery while cleaning the attic.", targetWord:"serendipitous", translation:"Natknąłem się na szczęśliwe odkrycie podczas sprzątania strychu.", definition:"Occurring or discovered by chance in a happy way", memoryHook:"serendipity — the word from 'The Three Princes of Serendip'", tags:["adjectives"] },
+  { sentence:"She had to be very frugal during her first year abroad.", targetWord:"frugal", translation:"Musiała być bardzo oszczędna podczas pierwszego roku za granicą.", definition:"Careful about spending money; economical", memoryHook:"frugal sounds like 'frugal' — fruit + gallon = buying in bulk to save", tags:["lifestyle","adjectives"] }
+];
+
+// ============ STATE ============
+const State = {
+  cards: [],
+  studyHistory: [],
+  exerciseHistory: [],
+  settings: { darkMode:false, dailyLimit:20, notificationsEnabled:false, notificationTime:'09:00', lastStudyDate:null, streak:0 },
+  session: null,
+  exSession: null,
+  editingCardId: null,
+  currentTags: [],
+  browseSort: 'due'
+};
+
+// ============ UTILS ============
+function uuid() { return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2); }
+function todayISO() { return new Date().toISOString().slice(0,10); }
+function addDays(iso, n) { const d=new Date(iso); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+function getDueCards() { const t=todayISO(); return State.cards.filter(c=>c.dueDate<=t); }
+function shuffle(a) { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];} return b; }
+function levenshtein(a,b) {
+  const m=a.length,n=b.length;
+  const dp=Array.from({length:m+1},(_,i)=>Array.from({length:n+1},(_,j)=>i===0?j:j===0?i:0));
+  for(let i=1;i<=m;i++) for(let j=1;j<=n;j++)
+    dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  return dp[m][n];
+}
+function highlightWord(sentence, word) {
+  if(!word||!sentence) return sentence||'';
+  const regex=new RegExp(`(${word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`,'gi');
+  return sentence.replace(regex,'<span class="target-word">$1</span>');
+}
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function getAllTags() {
+  const tags=new Set();
+  State.cards.forEach(c=>c.tags.forEach(t=>tags.add(t)));
+  return [...tags].sort();
+}
+
+// ============ PERSISTENCE ============
+function loadState() {
+  try {
+    const c=localStorage.getItem('vocab_cards'); if(c) State.cards=JSON.parse(c);
+    const h=localStorage.getItem('vocab_study_history'); if(h) State.studyHistory=JSON.parse(h);
+    const e=localStorage.getItem('vocab_exercise_history'); if(e) State.exerciseHistory=JSON.parse(e);
+    const s=localStorage.getItem('vocab_settings'); if(s) State.settings=Object.assign(State.settings,JSON.parse(s));
+  } catch(err) { console.error('Load error',err); }
+  if(State.cards.length===0) {
+    State.cards=SAMPLE_CARDS.map(sc=>({
+      id:uuid(), ...sc, interval:1, easeFactor:2.5, repetitions:0,
+      dueDate:todayISO(), dateAdded:todayISO(), lastReviewed:null
+    }));
+    saveCards();
+  }
+}
+function saveCards() { localStorage.setItem('vocab_cards',JSON.stringify(State.cards)); }
+function saveHistory() { localStorage.setItem('vocab_study_history',JSON.stringify(State.studyHistory)); }
+function saveExHistory() { localStorage.setItem('vocab_exercise_history',JSON.stringify(State.exerciseHistory)); }
+function saveSettings() { localStorage.setItem('vocab_settings',JSON.stringify(State.settings)); }
+
+// ============ STREAK ============
+function updateStreak() {
+  const today=todayISO();
+  const yesterday=addDays(today,-1);
+  if(State.settings.lastStudyDate===today) return;
+  if(State.settings.lastStudyDate===yesterday) State.settings.streak++;
+  else State.settings.streak=1;
+  State.settings.lastStudyDate=today;
+  saveSettings();
+}
+
+// ============ SM-2 ============
+function applySM2(card, rating) {
+  const today=todayISO();
+  if(rating==='again') {
+    card.interval=0; card.easeFactor=Math.max(1.3,card.easeFactor-0.20);
+    card.repetitions=0; card.dueDate=today;
+  } else if(rating==='hard') {
+    card.interval=1; card.easeFactor=Math.max(1.3,card.easeFactor-0.15);
+    card.dueDate=addDays(today,1);
+  } else if(rating==='good') {
+    card.interval=Math.max(1,Math.round(card.interval*card.easeFactor));
+    card.dueDate=addDays(today,card.interval); card.repetitions++;
+  } else if(rating==='easy') {
+    card.interval=Math.max(1,Math.round(card.interval*card.easeFactor*1.3));
+    card.easeFactor=card.easeFactor+0.15;
+    card.dueDate=addDays(today,card.interval); card.repetitions++;
+  }
+  card.lastReviewed=today;
+  const entry={id:uuid(),cardId:card.id,date:today,rating,timestamp:Date.now()};
+  State.studyHistory.push(entry);
+  saveHistory();
+}
+
+// ============ SERVICE WORKER ============
+function registerServiceWorker() {
+  if(!('serviceWorker' in navigator)) return;
+  const swCode=`
+const CACHE='vocab-v1';
+self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/']))));
+self.addEventListener('fetch',e=>e.respondWith(
+  caches.match(e.request).then(r=>r||fetch(e.request).then(res=>{
+    const clone=res.clone();
+    caches.open(CACHE).then(c=>c.put(e.request,clone));
+    return res;
+  }).catch(()=>r))
+));`;
+  const blob=new Blob([swCode],{type:'application/javascript'});
+  const url=URL.createObjectURL(blob);
+  navigator.serviceWorker.register(url).catch(console.error);
+}
+
+// ============ THEME ============
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', State.settings.darkMode ? 'dark' : 'light');
+  const iconD=document.getElementById('icon-dark');
+  const iconL=document.getElementById('icon-light');
+  if(iconD&&iconL){ iconD.style.display=State.settings.darkMode?'none':'block'; iconL.style.display=State.settings.darkMode?'block':'none'; }
+  const td=document.getElementById('toggle-dark');
+  if(td) td.className='toggle'+(State.settings.darkMode?' on':'');
+}
+
+// ============ CANVAS CHART ============
+function drawActivityChart(canvasId, days=14) {
+  const canvas=document.getElementById(canvasId);
+  if(!canvas) return;
+  const dpr=window.devicePixelRatio||1;
+  const w=canvas.offsetWidth||320;
+  canvas.width=w*dpr; canvas.height=120*dpr;
+  canvas.style.width=w+'px'; canvas.style.height='120px';
+  const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  const today=todayISO();
+  const counts=[];
+  const labels=[];
+  const dayNames=['Su','Mo','Tu','We','Th','Fr','Sa'];
+  for(let i=days-1;i>=0;i--) {
+    const d=addDays(today,-i);
+    const count=State.studyHistory.filter(h=>h.date===d).length;
+    counts.push(count);
+    const day=new Date(d).getDay();
+    labels.push(dayNames[day]);
+  }
+  const maxCount=Math.max(...counts,1);
+  const barArea=90; const labelH=20; const padH=10;
+  const barW=(w-(days+1)*4)/(days);
+  ctx.clearRect(0,0,w,120);
+  const isDark=document.documentElement.getAttribute('data-theme')==='dark';
+  const barColor=getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#4f46e5';
+  const borderColor=getComputedStyle(document.documentElement).getPropertyValue('--border').trim()||'#e2e8f0';
+  const textColor=getComputedStyle(document.documentElement).getPropertyValue('--text2').trim()||'#64748b';
+  counts.forEach((count,i)=>{
+    const x=4+i*(barW+4);
+    const barH=count===0?2:Math.max(4,Math.round((count/maxCount)*barArea));
+    const y=padH+barArea-barH;
+    ctx.fillStyle=count===0?(isDark?'#334155':'#e2e8f0'):barColor;
+    ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(x,y,barW,barH,3);
+    else ctx.rect(x,y,barW,barH);
+    ctx.fill();
+    ctx.fillStyle=textColor;
+    ctx.font=`${Math.max(9,Math.min(11,barW))}px system-ui`;
+    ctx.textAlign='center';
+    ctx.fillText(labels[i],x+barW/2,120-3);
+  });
+}
+
+// ============ SCREEN NAVIGATION ============
+function showScreen(id, skipRender) {
+  document.querySelectorAll('.screen').forEach(s=>{
+    s.style.display='none';
+    s.classList.remove('active');
+  });
+  const screen=document.getElementById(id);
+  if(!screen) return;
+  screen.style.display='block';
+  requestAnimationFrame(()=>{ screen.classList.add('active'); });
+  document.querySelectorAll('.nav-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.screen===id);
+  });
+  if(!skipRender) renderScreen(id);
+}
+function renderScreen(id) {
+  if(id==='screen-home') renderHome();
+  else if(id==='screen-review') renderReview();
+  else if(id==='screen-exercise-config') renderExerciseConfig();
+  else if(id==='screen-exercise') renderExercise();
+  else if(id==='screen-exercise-results') renderExerciseResults();
+  else if(id==='screen-add') renderAddCard();
+  else if(id==='screen-browse') renderBrowse();
+  else if(id==='screen-stats') renderStats();
+  else if(id==='screen-settings') renderSettings();
+}
+
+// ============ HOME ============
+function renderHome() {
+  const due=getDueCards();
+  const limited=due.slice(0,State.settings.dailyLimit);
+  document.getElementById('home-due').textContent=limited.length;
+  document.getElementById('home-streak').textContent=State.settings.streak+'🔥';
+  document.getElementById('home-learned').textContent=State.cards.filter(c=>c.interval>7).length;
+  const btn=document.getElementById('btn-start-review');
+  btn.textContent=`Review ${limited.length} Card${limited.length!==1?'s':''}`;
+  btn.disabled=limited.length===0;
+  setTimeout(()=>drawActivityChart('home-chart'),50);
+}
+
+// ============ REVIEW ============
+function startReview() {
+  const due=getDueCards().slice(0,State.settings.dailyLimit);
+  if(!due.length) return;
+  State.session={ queue:[...due], currentIndex:0, reviewed:0 };
+  showScreen('screen-review');
+}
+function renderReview() {
+  if(!State.session) return;
+  const { queue, currentIndex } = State.session;
+  const total=queue.length;
+  if(currentIndex>=total) {
+    showReviewComplete();
+    return;
+  }
+  document.getElementById('review-card-area').style.display='block';
+  document.getElementById('review-complete').style.display='none';
+  const card=queue[currentIndex];
+  const pct=total?Math.round((currentIndex/total)*100):0;
+  document.getElementById('review-progress-label').textContent=`${currentIndex+1} / ${total}`;
+  document.getElementById('review-progress-fill').style.width=pct+'%';
+  document.getElementById('review-sentence').innerHTML=highlightWord(escHtml(card.sentence), escHtml(card.targetWord));
+  document.getElementById('review-translation').textContent=card.translation;
+  document.getElementById('review-definition').textContent=card.definition||'—';
+  const hookWrap=document.getElementById('review-hook-wrap');
+  if(card.memoryHook) { hookWrap.style.display='block'; document.getElementById('review-hook').textContent=card.memoryHook; }
+  else hookWrap.style.display='none';
+  const tagsEl=document.getElementById('review-tags');
+  tagsEl.innerHTML=card.tags.map(t=>`<span class="tag-pill">${escHtml(t)}</span>`).join('');
+  const ci=document.getElementById('card-inner');
+  ci.classList.remove('flipped');
+}
+function showReviewComplete() {
+  document.getElementById('review-card-area').style.display='none';
+  document.getElementById('review-complete').style.display='block';
+  const reviewed=State.session.reviewed||0;
+  document.getElementById('review-complete-msg').textContent=`You reviewed ${reviewed} card${reviewed!==1?'s':''}.`;
+  updateStreak();
+  renderHome();
+}
+function handleRating(rating) {
+  if(!State.session) return;
+  const { queue, currentIndex } = State.session;
+  const card=queue[currentIndex];
+  applySM2(card, rating);
+  saveCards();
+  State.session.reviewed=(State.session.reviewed||0)+1;
+  if(rating==='again') {
+    // re-queue at end
+    queue.push(card);
+  }
+  State.session.currentIndex++;
+  const ci=document.getElementById('card-inner');
+  ci.classList.remove('flipped');
+  setTimeout(()=>renderReview(),50);
+}
+
+// ============ EXERCISE CONFIG ============
+function renderExerciseConfig() {
+  document.getElementById('ex-pool-all-count').textContent=State.cards.length;
+  document.getElementById('ex-pool-due-count').textContent=getDueCards().length;
+  const tagSel=document.getElementById('ex-tag-select');
+  const allTags=getAllTags();
+  tagSel.innerHTML='<option value="">Select a tag...</option>'+allTags.map(t=>`<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('');
+  // disable type 4 if no hooks
+  const hasHooks=State.cards.some(c=>c.memoryHook);
+  const t4label=document.getElementById('ex-type-4-label');
+  const t4cb=document.getElementById('ex-type-4');
+  t4label.classList.toggle('disabled',!hasHooks);
+  t4cb.disabled=!hasHooks;
+  if(!hasHooks) t4cb.checked=false;
+}
+
+function getExercisePool() {
+  const poolVal=document.querySelector('input[name="ex-pool"]:checked')?.value||'all';
+  let pool=[];
+  if(poolVal==='all') pool=[...State.cards];
+  else if(poolVal==='due') pool=getDueCards();
+  else if(poolVal==='tag') {
+    const tag=document.getElementById('ex-tag-select').value;
+    pool=tag?State.cards.filter(c=>c.tags.includes(tag)):State.cards;
+  }
+  return pool;
+}
+
+function startExSession() {
+  const pool=getExercisePool();
+  if(!pool.length) { alert('No cards available for the selected pool.'); return; }
+  const types=[];
+  if(document.getElementById('ex-type-1').checked) types.push(1);
+  if(document.getElementById('ex-type-2').checked) types.push(2);
+  if(document.getElementById('ex-type-3').checked) types.push(3);
+  if(document.getElementById('ex-type-4').checked) types.push(4);
+  if(!types.length) { alert('Select at least one exercise type.'); return; }
+  const lenVal=document.querySelector('input[name="ex-length"]:checked')?.value||'10';
+  let count=lenVal==='custom'?parseInt(document.getElementById('ex-custom-count').value)||10:parseInt(lenVal);
+  count=Math.max(1,Math.min(count,200));
+  const exercises=generateExercises(pool,types,count);
+  State.exSession={ exercises, currentIndex:0, results:[] };
+  showScreen('screen-exercise');
+}
+
+// ============ EXERCISE ENGINE ============
+function generateExercises(pool, types, count) {
+  const shuffled=shuffle(pool);
+  const exercises=[];
+  for(let i=0;i<count;i++) {
+    const card=shuffled[i%shuffled.length];
+    let eligibleTypes=[...types];
+    if(!card.memoryHook) eligibleTypes=eligibleTypes.filter(t=>t!==4);
+    if(!eligibleTypes.length) eligibleTypes=types.filter(t=>t!==4);
+    if(!eligibleTypes.length) eligibleTypes=[1];
+    const type=eligibleTypes[Math.floor(Math.random()*eligibleTypes.length)];
+    exercises.push(buildExercise(card,type,pool));
+  }
+  return exercises;
+}
+function buildExercise(card, type, pool) {
+  if(type===1) {
+    const distractors=shuffle(pool.filter(c=>c.id!==card.id)).slice(0,3);
+    const options=shuffle([card.translation,...distractors.map(d=>d.translation)]);
+    return { card, type, options, answer:card.translation };
+  }
+  if(type===2) {
+    const regex=new RegExp(card.targetWord.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i');
+    const question=card.sentence.replace(regex,'______');
+    return { card, type, question, answer:card.targetWord };
+  }
+  if(type===3) {
+    return { card, type, question:card.translation, answer:card.targetWord };
+  }
+  if(type===4) {
+    return { card, type, question:card.memoryHook, hint:card.translation, answer:card.targetWord };
+  }
+}
+
+// ============ RENDER EXERCISE ============
+function renderExercise() {
+  if(!State.exSession) return;
+  const { exercises, currentIndex } = State.exSession;
+  if(currentIndex>=exercises.length) {
+    showScreen('screen-exercise-results');
+    return;
+  }
+  const total=exercises.length;
+  const pct=Math.round((currentIndex/total)*100);
+  document.getElementById('ex-progress-label').textContent=`${currentIndex+1} / ${total}`;
+  document.getElementById('ex-progress-fill').style.width=pct+'%';
+  const ex=exercises[currentIndex];
+  const area=document.getElementById('ex-area');
+  area.innerHTML='';
+  if(ex.type===1) renderMCExercise(ex, area);
+  else renderTextExercise(ex, area);
+}
+
+function renderMCExercise(ex, area) {
+  const card=document.createElement('div'); card.className='exercise-card';
+  const typeLabel=document.createElement('div'); typeLabel.className='card-label'; typeLabel.textContent='Multiple Choice — choose the Polish translation';
+  card.appendChild(typeLabel);
+  const q=document.createElement('div'); q.className='exercise-question';
+  q.innerHTML=highlightWord(escHtml(ex.card.sentence),escHtml(ex.card.targetWord));
+  card.appendChild(q);
+  const opts=ex.options||[];
+  opts.forEach(opt=>{
+    const btn=document.createElement('button'); btn.className='mc-option'; btn.textContent=opt;
+    btn.addEventListener('click',()=>handleMCAnswer(opt, ex, card));
+    card.appendChild(btn);
+  });
+  area.appendChild(card);
+}
+
+function handleMCAnswer(chosen, ex, card) {
+  const correct=chosen===ex.answer;
+  const btns=card.querySelectorAll('.mc-option');
+  btns.forEach(b=>{
+    b.disabled=true;
+    if(b.textContent===ex.answer) b.classList.add('reveal');
+    if(b.textContent===chosen && !correct) b.classList.add('wrong');
+  });
+  recordExResult(ex, correct, chosen);
+  showFeedback(card, correct, ex.answer);
+  appendNextBtn(card);
+}
+
+function renderTextExercise(ex, area) {
+  const card=document.createElement('div'); card.className='exercise-card';
+  let labelText='';
+  if(ex.type===2) labelText='Fill in the blank — type the missing English word';
+  else if(ex.type===3) labelText='Polish → English — type the English word';
+  else if(ex.type===4) labelText='Memory Hook — what word does this describe?';
+  const typeLabel=document.createElement('div'); typeLabel.className='card-label'; typeLabel.textContent=labelText;
+  card.appendChild(typeLabel);
+  const q=document.createElement('div'); q.className='exercise-question'; q.textContent=ex.question||'';
+  card.appendChild(q);
+  if(ex.type===4 && ex.hint) {
+    const hint=document.createElement('div'); hint.className='definition-text';
+    hint.textContent='Polish: '+ex.hint; card.appendChild(hint);
+  }
+  const input=document.createElement('input'); input.type='text';
+  input.className='form-input'; input.placeholder='Type your answer...'; input.id='ex-text-input';
+  card.appendChild(input);
+  const checkBtn=document.createElement('button'); checkBtn.className='btn-primary mt-12'; checkBtn.textContent='Check';
+  checkBtn.addEventListener('click',()=>handleTextAnswer(ex,input,card,checkBtn));
+  input.addEventListener('keydown',e=>{ if(e.key==='Enter') checkBtn.click(); });
+  card.appendChild(checkBtn);
+  area.appendChild(card);
+  setTimeout(()=>input.focus(),100);
+}
+
+function handleTextAnswer(ex, input, card, checkBtn) {
+  const userAnswer=input.value.trim();
+  if(!userAnswer) return;
+  const correct=levenshtein(userAnswer.toLowerCase(), ex.answer.toLowerCase())<=1;
+  input.disabled=true; checkBtn.disabled=true;
+  input.style.borderColor=correct?'var(--success)':'var(--error)';
+  recordExResult(ex, correct, userAnswer);
+  showFeedback(card, correct, ex.answer);
+  appendNextBtn(card);
+}
+
+function showFeedback(card, correct, answer) {
+  const fb=document.createElement('div');
+  fb.className='feedback-box '+(correct?'feedback-correct':'feedback-wrong');
+  fb.textContent=correct?'Correct! ✓':'Wrong. Correct answer: '+answer;
+  card.appendChild(fb);
+}
+
+function appendNextBtn(card) {
+  const nextBtn=document.createElement('button'); nextBtn.className='btn-primary'; nextBtn.textContent='Next →';
+  nextBtn.addEventListener('click',()=>{
+    State.exSession.currentIndex++;
+    renderExercise();
+  });
+  card.appendChild(nextBtn);
+}
+
+function recordExResult(ex, correct, userAnswer) {
+  const today=todayISO();
+  const entry={id:uuid(),cardId:ex.card.id,date:today,exerciseType:ex.type,correct,userAnswer,correctAnswer:ex.answer,timestamp:Date.now()};
+  State.exSession.results.push(entry);
+  State.exerciseHistory.push(entry);
+  saveExHistory();
+}
+
+// ============ EXERCISE RESULTS ============
+function renderExerciseResults() {
+  if(!State.exSession) return;
+  const results=State.exSession.results;
+  const total=results.length;
+  const correct=results.filter(r=>r.correct).length;
+  document.getElementById('results-score').textContent=`${correct} / ${total}`;
+  // breakdown by type
+  const byType={};
+  results.forEach(r=>{
+    if(!byType[r.exerciseType]) byType[r.exerciseType]=[];
+    byType[r.exerciseType].push(r);
+  });
+  const typeNames={1:'Multiple Choice',2:'Fill Blank',3:'Polish→EN',4:'Memory Hook'};
+  let breakHtml='<table class="stats-table"><thead><tr><th>Type</th><th>Correct</th><th>Total</th></tr></thead><tbody>';
+  Object.entries(byType).forEach(([t,rs])=>{
+    const c=rs.filter(r=>r.correct).length;
+    breakHtml+=`<tr><td>${typeNames[t]||t}</td><td>${c}</td><td>${rs.length}</td></tr>`;
+  });
+  breakHtml+='</tbody></table>';
+  document.getElementById('results-breakdown').innerHTML=breakHtml;
+  const wrong=results.filter(r=>!r.correct);
+  const ww=document.getElementById('results-wrong-wrap');
+  if(wrong.length) {
+    ww.style.display='block';
+    document.getElementById('results-wrong-list').innerHTML=wrong.map(r=>{
+      const card=State.cards.find(c=>c.id===r.cardId);
+      return `<div class="wrong-item"><div class="wrong-word">${escHtml(card?card.targetWord:r.cardId)}</div><div class="wrong-answer">Your answer: ${escHtml(r.userAnswer)} → Correct: ${escHtml(r.correctAnswer)}</div></div>`;
+    }).join('');
+  } else ww.style.display='none';
+}
+
+// ============ ADD / EDIT CARD ============
+function renderAddCard() {
+  const cardId=State.editingCardId;
+  const card=cardId?State.cards.find(c=>c.id===cardId):null;
+  document.getElementById('add-title').textContent=card?'Edit Card':'Add Card';
+  document.getElementById('btn-delete-card').style.display=card?'flex':'none';
+  document.getElementById('field-sentence').value=card?card.sentence:'';
+  document.getElementById('field-word').value=card?card.targetWord:'';
+  document.getElementById('field-translation').value=card?card.translation:'';
+  document.getElementById('field-definition').value=card?card.definition:'';
+  document.getElementById('field-hook').value=card?card.memoryHook:'';
+  State.currentTags=card?[...card.tags]:[];
+  renderTagChips();
+  updateWordPreview();
+  document.getElementById('word-warning').style.display='none';
+}
+function renderTagChips() {
+  document.getElementById('tag-chips-display').innerHTML=State.currentTags.map((t,i)=>
+    `<span class="tag-chip">${escHtml(t)}<button class="tag-chip-remove" data-idx="${i}" aria-label="Remove tag">×</button></span>`
+  ).join('');
+  document.querySelectorAll('.tag-chip-remove').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      State.currentTags.splice(parseInt(btn.dataset.idx),1);
+      renderTagChips();
+    });
+  });
+}
+function updateWordPreview() {
+  const sentence=document.getElementById('field-sentence').value;
+  const word=document.getElementById('field-word').value;
+  const preview=document.getElementById('word-preview');
+  const warning=document.getElementById('word-warning');
+  if(!sentence && !word) { preview.textContent='Type the sentence and target word above...'; warning.style.display='none'; return; }
+  if(word && sentence) {
+    const regex=new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i');
+    const found=regex.test(sentence);
+    warning.style.display=found?'none':'block';
+    preview.innerHTML=highlightWord(escHtml(sentence),escHtml(word));
+  } else {
+    preview.textContent=sentence||'';
+    warning.style.display='none';
+  }
+}
+function saveCard(e) {
+  e.preventDefault();
+  const sentence=document.getElementById('field-sentence').value.trim();
+  const word=document.getElementById('field-word').value.trim();
+  const translation=document.getElementById('field-translation').value.trim();
+  const definition=document.getElementById('field-definition').value.trim();
+  const hook=document.getElementById('field-hook').value.trim();
+  if(!sentence||!word||!translation) { alert('Sentence, target word and translation are required.'); return; }
+  if(State.editingCardId) {
+    const card=State.cards.find(c=>c.id===State.editingCardId);
+    if(card) { card.sentence=sentence; card.targetWord=word; card.translation=translation; card.definition=definition; card.memoryHook=hook; card.tags=[...State.currentTags]; }
+  } else {
+    State.cards.push({ id:uuid(), sentence, targetWord:word, translation, definition, memoryHook:hook, tags:[...State.currentTags], interval:1, easeFactor:2.5, repetitions:0, dueDate:todayISO(), dateAdded:todayISO(), lastReviewed:null });
+  }
+  saveCards();
+  State.editingCardId=null;
+  showScreen('screen-browse');
+}
+function deleteCard(id) {
+  if(!confirm('Delete this card? This cannot be undone.')) return;
+  State.cards=State.cards.filter(c=>c.id!==id);
+  saveCards();
+  State.editingCardId=null;
+  showScreen('screen-browse');
+}
+function importFromText(text) {
+  const lines=text.split('\n').map(l=>l.trim()).filter(l=>l&&l.includes('|'));
+  let added=0;
+  lines.forEach(line=>{
+    const parts=line.split('|').map(p=>p.trim());
+    if(parts.length<3) return;
+    const [word,sentence,translation]=parts;
+    if(!word||!sentence||!translation) return;
+    State.cards.push({ id:uuid(), sentence, targetWord:word, translation, definition:'', memoryHook:'', tags:[], interval:1, easeFactor:2.5, repetitions:0, dueDate:todayISO(), dateAdded:todayISO(), lastReviewed:null });
+    added++;
+  });
+  saveCards();
+  alert(`Imported ${added} card${added!==1?'s':''}.`);
+  document.getElementById('import-text').value='';
+}
+
+// ============ BROWSE ============
+function renderBrowse() {
+  const search=(document.getElementById('browse-search').value||'').toLowerCase();
+  const tag=document.getElementById('browse-tag-filter').value||'';
+  const sort=State.browseSort;
+  // populate tag filter
+  const tagFilter=document.getElementById('browse-tag-filter');
+  const currentTagVal=tagFilter.value;
+  tagFilter.innerHTML='<option value="">All tags</option>'+getAllTags().map(t=>`<option value="${escHtml(t)}"${t===currentTagVal?' selected':''}>${escHtml(t)}</option>`).join('');
+  let cards=[...State.cards];
+  if(search) cards=cards.filter(c=>c.targetWord.toLowerCase().includes(search)||c.sentence.toLowerCase().includes(search));
+  if(tag) cards=cards.filter(c=>c.tags.includes(tag));
+  if(sort==='due') cards.sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+  else if(sort==='ease') cards.sort((a,b)=>a.easeFactor-b.easeFactor);
+  else if(sort==='added') cards.sort((a,b)=>b.dateAdded.localeCompare(a.dateAdded));
+  document.getElementById('browse-count').textContent=cards.length;
+  const list=document.getElementById('browse-list');
+  if(!cards.length) {
+    list.innerHTML='<div class="empty-state"><div class="empty-state-icon">🔍</div><p>No cards found.</p></div>';
+    return;
+  }
+  list.innerHTML=cards.map(c=>{
+    const easeColor=c.easeFactor<1.8?'var(--error)':c.easeFactor<2.2?'var(--warning)':'var(--success)';
+    return `<div class="card-row" data-id="${c.id}">
+      <div class="card-row-main">
+        <div class="card-row-word">${escHtml(c.targetWord)}</div>
+        <div class="card-row-meta">
+          <span class="due-badge">Due: ${c.dueDate}</span>
+          <span class="ease-badge" style="color:${easeColor}">EF: ${c.easeFactor.toFixed(2)}</span>
+          ${c.tags.map(t=>`<span class="tag-pill">${escHtml(t)}</span>`).join('')}
+        </div>
+      </div>
+      <button class="icon-btn" data-edit="${c.id}" aria-label="Edit card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.card-row').forEach(row=>{
+    row.addEventListener('click', e=>{
+      if(e.target.closest('[data-edit]')) return;
+      const id=row.dataset.id;
+      State.editingCardId=id;
+      showScreen('screen-add');
+    });
+  });
+  list.querySelectorAll('[data-edit]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      e.stopPropagation();
+      State.editingCardId=btn.dataset.edit;
+      showScreen('screen-add');
+    });
+  });
+}
+
+// ============ STATS ============
+function renderStats() {
+  document.getElementById('stats-total').textContent=State.cards.length;
+  document.getElementById('stats-reviews').textContent=State.studyHistory.length;
+  const total=State.studyHistory.length;
+  const goodEasy=State.studyHistory.filter(h=>h.rating==='good'||h.rating==='easy').length;
+  const retention=total?Math.round(goodEasy/total*100):0;
+  document.getElementById('stats-retention').textContent=retention+'%';
+  // stages
+  const newC=State.cards.filter(c=>c.interval<=1).length;
+  const learning=State.cards.filter(c=>c.interval>1&&c.interval<=7).length;
+  const mature=State.cards.filter(c=>c.interval>7).length;
+  const total2=State.cards.length||1;
+  document.getElementById('stats-stages').innerHTML=`
+    <div class="interval-bar-wrap"><div class="interval-bar-label"><span>New (≤1d)</span><span>${newC}</span></div><div class="interval-bar-track"><div class="interval-bar-fill" style="width:${(newC/total2*100).toFixed(1)}%;background:var(--error)"></div></div></div>
+    <div class="interval-bar-wrap"><div class="interval-bar-label"><span>Learning (2-7d)</span><span>${learning}</span></div><div class="interval-bar-track"><div class="interval-bar-fill" style="width:${(learning/total2*100).toFixed(1)}%;background:var(--warning)"></div></div></div>
+    <div class="interval-bar-wrap"><div class="interval-bar-label"><span>Mature (>7d)</span><span>${mature}</span></div><div class="interval-bar-track"><div class="interval-bar-fill" style="width:${(mature/total2*100).toFixed(1)}%;background:var(--success)"></div></div></div>
+  `;
+  // hardest
+  const sorted=[...State.cards].sort((a,b)=>a.easeFactor-b.easeFactor).slice(0,10);
+  document.getElementById('stats-hardest').innerHTML=sorted.length?sorted.map(c=>
+    `<div class="hardest-row"><span>${escHtml(c.targetWord)}</span><span class="ease-badge">EF: ${c.easeFactor.toFixed(2)}</span></div>`
+  ).join(''):'<p style="color:var(--text2);font-size:14px">No cards yet.</p>';
+  setTimeout(()=>drawActivityChart('stats-chart'),50);
+}
+
+// ============ SETTINGS ============
+function renderSettings() {
+  document.getElementById('toggle-dark').className='toggle'+(State.settings.darkMode?' on':'');
+  document.getElementById('toggle-notif').className='toggle'+(State.settings.notificationsEnabled?' on':'');
+  document.getElementById('setting-limit').value=State.settings.dailyLimit;
+  document.getElementById('setting-notif-time').value=State.settings.notificationTime||'09:00';
+  document.getElementById('notif-time-wrap').className='notification-time-wrap'+(State.settings.notificationsEnabled?' visible':'');
+}
+
+// ============ EXPORT / IMPORT ============
+function exportData() {
+  const data={ cards:State.cards, studyHistory:State.studyHistory, exerciseHistory:State.exerciseHistory, settings:State.settings, exportDate:todayISO() };
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=`vocabpwa_backup_${todayISO()}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+function importFromJSON(jsonStr) {
+  try {
+    const data=JSON.parse(jsonStr);
+    if(data.cards) { State.cards=data.cards; saveCards(); }
+    if(data.studyHistory) { State.studyHistory=data.studyHistory; saveHistory(); }
+    if(data.exerciseHistory) { State.exerciseHistory=data.exerciseHistory; saveExHistory(); }
+    if(data.settings) { State.settings=Object.assign(State.settings,data.settings); saveSettings(); }
+    alert('Import successful! '+State.cards.length+' cards loaded.');
+    applyTheme();
+    renderHome();
+  } catch(err) { alert('Import failed: '+err.message); }
+}
+
+// ============ SWIPE DETECTION ============
+function setupSwipe(element, onLeft, onRight) {
+  let startX, startY;
+  element.addEventListener('touchstart',e=>{ startX=e.touches[0].clientX; startY=e.touches[0].clientY; },{passive:true});
+  element.addEventListener('touchend',e=>{
+    if(startX===undefined) return;
+    const dx=e.changedTouches[0].clientX-startX;
+    const dy=Math.abs(e.changedTouches[0].clientY-startY);
+    if(Math.abs(dx)>50&&dy<100) { if(dx>0) onRight(); else onLeft(); }
+    startX=undefined;
+  });
+}
+
+// ============ EVENT LISTENERS ============
+function setupEventListeners() {
+  // Dark mode toggle (header)
+  document.getElementById('btn-dark-toggle').addEventListener('click',()=>{
+    State.settings.darkMode=!State.settings.darkMode;
+    saveSettings(); applyTheme();
+  });
+  // Home buttons
+  document.getElementById('btn-start-review').addEventListener('click',startReview);
+  document.getElementById('btn-start-exercises').addEventListener('click',()=>showScreen('screen-exercise-config'));
+  // Review
+  document.getElementById('btn-show-answer').addEventListener('click',()=>{
+    document.getElementById('card-inner').classList.add('flipped');
+  });
+  document.querySelectorAll('.rating-buttons [data-rating]').forEach(btn=>{
+    btn.addEventListener('click',()=>handleRating(btn.dataset.rating));
+  });
+  document.getElementById('btn-review-back').addEventListener('click',()=>{ State.session=null; showScreen('screen-home'); });
+  document.getElementById('btn-review-done').addEventListener('click',()=>{ State.session=null; showScreen('screen-home'); });
+  // Swipe on review card
+  setupSwipe(document.getElementById('card-inner'),
+    ()=>{ if(document.getElementById('card-inner').classList.contains('flipped')) handleRating('again'); },
+    ()=>{ if(document.getElementById('card-inner').classList.contains('flipped')) handleRating('good'); }
+  );
+  // Exercise config
+  document.querySelectorAll('input[name="ex-pool"]').forEach(r=>{
+    r.addEventListener('change',()=>{ document.getElementById('ex-tag-wrap').style.display=r.value==='tag'&&r.checked?'block':'none'; });
+  });
+  document.querySelectorAll('input[name="ex-length"]').forEach(r=>{
+    r.addEventListener('change',()=>{ document.getElementById('ex-custom-wrap').style.display=r.value==='custom'&&r.checked?'block':'none'; });
+  });
+  document.getElementById('btn-start-ex-session').addEventListener('click',startExSession);
+  document.getElementById('btn-ex-back').addEventListener('click',()=>{ State.exSession=null; showScreen('screen-home'); });
+  // Exercise results
+  document.getElementById('btn-results-done').addEventListener('click',()=>{ State.exSession=null; showScreen('screen-home'); });
+  document.getElementById('btn-mark-review').addEventListener('click',()=>{
+    if(!State.exSession) return;
+    const today=todayISO();
+    const wrongIds=new Set(State.exSession.results.filter(r=>!r.correct).map(r=>r.cardId));
+    State.cards.forEach(c=>{ if(wrongIds.has(c.id)) c.dueDate=today; });
+    saveCards();
+    alert('Marked '+wrongIds.size+' card(s) for review today.');
+  });
+  // Add card form
+  document.getElementById('field-sentence').addEventListener('input',updateWordPreview);
+  document.getElementById('field-word').addEventListener('input',updateWordPreview);
+  document.getElementById('add-card-form').addEventListener('submit',saveCard);
+  document.getElementById('btn-cancel-add').addEventListener('click',()=>{ State.editingCardId=null; showScreen('screen-browse'); });
+  document.getElementById('btn-delete-card').addEventListener('click',()=>{ if(State.editingCardId) deleteCard(State.editingCardId); });
+  // Tags input
+  document.getElementById('field-tags-input').addEventListener('keydown',e=>{
+    if(e.key==='Enter'||e.key===',') {
+      e.preventDefault();
+      const val=e.target.value.replace(',','').trim();
+      if(val&&!State.currentTags.includes(val)) { State.currentTags.push(val); renderTagChips(); }
+      e.target.value='';
+    }
+  });
+  document.getElementById('field-tags-input').addEventListener('blur',e=>{
+    const val=e.target.value.replace(',','').trim();
+    if(val&&!State.currentTags.includes(val)) { State.currentTags.push(val); renderTagChips(); e.target.value=''; }
+  });
+  // Import collapsible
+  document.getElementById('import-toggle').addEventListener('click',()=>{
+    const body=document.getElementById('import-body');
+    body.classList.toggle('open');
+  });
+  document.getElementById('btn-import-text').addEventListener('click',()=>{
+    const text=document.getElementById('import-text').value;
+    if(!text.trim()) return;
+    importFromText(text);
+  });
+  // Browse
+  document.getElementById('browse-search').addEventListener('input',renderBrowse);
+  document.getElementById('browse-tag-filter').addEventListener('change',renderBrowse);
+  ['sort-due','sort-ease','sort-added'].forEach(id=>{
+    document.getElementById(id).addEventListener('click',()=>{
+      State.browseSort=id==='sort-due'?'due':id==='sort-ease'?'ease':'added';
+      document.querySelectorAll('.sort-btn').forEach(b=>b.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      renderBrowse();
+    });
+  });
+  // Settings toggles
+  document.getElementById('toggle-dark').addEventListener('click',()=>{
+    State.settings.darkMode=!State.settings.darkMode;
+    saveSettings(); applyTheme(); renderSettings();
+  });
+  document.getElementById('toggle-notif').addEventListener('click',()=>{
+    State.settings.notificationsEnabled=!State.settings.notificationsEnabled;
+    saveSettings(); renderSettings();
+  });
+  document.getElementById('setting-limit').addEventListener('change',e=>{
+    State.settings.dailyLimit=Math.max(1,parseInt(e.target.value)||20);
+    saveSettings();
+  });
+  document.getElementById('setting-notif-time').addEventListener('change',e=>{
+    State.settings.notificationTime=e.target.value; saveSettings();
+  });
+  document.getElementById('btn-export').addEventListener('click',exportData);
+  document.getElementById('import-json-file').addEventListener('change',e=>{
+    const file=e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>importFromJSON(ev.target.result);
+    reader.readAsText(file);
+    e.target.value='';
+  });
+  document.getElementById('btn-reset').addEventListener('click',()=>{
+    if(!confirm('This will delete ALL cards and history. Are you sure?')) return;
+    if(!confirm('Really? This cannot be undone.')) return;
+    localStorage.removeItem('vocab_cards');
+    localStorage.removeItem('vocab_study_history');
+    localStorage.removeItem('vocab_exercise_history');
+    localStorage.removeItem('vocab_settings');
+    location.reload();
+  });
+  // Bottom nav
+  document.querySelectorAll('.nav-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const screen=btn.dataset.screen;
+      if(!screen) return;
+      if(btn.dataset.action==='new-card') State.editingCardId=null;
+      showScreen(screen);
+    });
+  });
+}
+
+// ============ INIT ============
+function init() {
+  loadState();
+  applyTheme();
+  registerServiceWorker();
+  setupEventListeners();
+  showScreen('screen-home');
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
