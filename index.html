@@ -697,16 +697,6 @@
         <input type="time" class="form-input" id="setting-notif-time" value="09:00">
       </div>
       <div class="divider"></div>
-      <div class="section-title">AI — Automatyczne generowanie (bezpłatne)</div>
-      <div class="form-group">
-        <label class="form-label">Klucz API Google Gemini</label>
-        <div class="toggle-sub" style="margin-bottom:8px">Pobierz za darmo na <strong>aistudio.google.com</strong> → Get API key</div>
-        <div class="api-key-row">
-          <input type="password" class="form-input" id="setting-api-key" placeholder="AIzaSy..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-          <button type="button" class="btn-icon-sm" id="btn-toggle-api-key" aria-label="Pokaż/ukryj klucz">👁</button>
-        </div>
-        <div class="form-hint" style="margin-top:6px">Bezpłatnie: 1500 generowań dziennie. Klucz przechowywany tylko na Twoim urządzeniu.</div>
-      </div>
       <div class="divider"></div>
       <div class="section-title">Dane</div>
       <div class="gap-8">
@@ -760,7 +750,7 @@ const State = {
   cards: [],
   studyHistory: [],
   exerciseHistory: [],
-  settings: { darkMode:false, dailyLimit:20, notificationsEnabled:false, notificationTime:'09:00', lastStudyDate:null, streak:0, claudeApiKey:'' },
+  settings: { darkMode:false, dailyLimit:20, notificationsEnabled:false, notificationTime:'09:00', lastStudyDate:null, streak:0 },
   session: null,
   exSession: null,
   editingCardId: null,
@@ -852,7 +842,7 @@ function applySM2(card, rating) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v4';
+const CACHE='vocab-v6';
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/']))));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
 self.addEventListener('fetch',e=>{
@@ -1242,19 +1232,12 @@ function renderExerciseResults() {
   } else ww.style.display='none';
 }
 
-// ============ ADD / EDIT CARD ============
-// ============ AI GENERATION ============
+// ============ AI GENERATION (bez klucza API) ============
 async function generateWithAI(word) {
-  const apiKey = State.settings.claudeApiKey;
   const statusEl = document.getElementById('ai-status');
   const btn = document.getElementById('btn-generate');
-  if (!apiKey) {
-    statusEl.className = 'ai-status error';
-    statusEl.textContent = '⚠ Brak klucza API. Wejdź w Ustawienia i wpisz klucz Gemini.';
-    statusEl.style.display = 'block';
-    return;
-  }
-  if (!word.trim()) {
+  const w = word.trim().toLowerCase();
+  if (!w) {
     statusEl.className = 'ai-status error';
     statusEl.textContent = '⚠ Wpisz słówko przed generowaniem.';
     statusEl.style.display = 'block';
@@ -1262,47 +1245,69 @@ async function generateWithAI(word) {
   }
   btn.disabled = true;
   statusEl.className = 'ai-status loading';
-  statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie i tłumaczenie...';
+  statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam w słowniku...';
   statusEl.style.display = 'block';
-  const prompt = `For the English word or phrase "${word.trim()}", generate:
-1. One natural English sentence using this word in a real-life context (not too complex, max 20 words)
-2. Polish translation of that full sentence
-3. A simple one-line English definition (max 10 words)
-
-Respond ONLY with valid JSON in this exact format, no extra text:
-{"sentence":"...","translation":"...","definition":"..."}`;
   try {
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    // Krok 1: Free Dictionary API — zdanie przykładowe + definicja
+    let sentence = '';
+    let definition = '';
+    const dictResp = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`);
+    let partOfSpeech = '';
+    if (dictResp.ok) {
+      const dictData = await dictResp.json();
+      for (const entry of dictData) {
+        for (const meaning of entry.meanings) {
+          if (!partOfSpeech) partOfSpeech = meaning.partOfSpeech || '';
+          for (const def of meaning.definitions) {
+            if (!definition) definition = def.definition;
+            if (!sentence && def.example) sentence = def.example;
+            if (sentence && definition) break;
+          }
+          if (sentence && definition) break;
+        }
+        if (sentence && definition) break;
       }
-    );
-    if (!resp.ok) {
-      const err = await resp.json().catch(()=>({}));
-      const msg = err.error?.message || 'Błąd HTTP ' + resp.status;
-      if (resp.status === 400) throw new Error('Zły klucz API lub zapytanie (400): ' + msg);
-      if (resp.status === 403) throw new Error('Klucz API nieprawidłowy lub brak uprawnień (403)');
-      if (resp.status === 429) throw new Error('Przekroczono limit zapytań — spróbuj za chwilę (429)');
-      throw new Error(msg);
     }
-    const data = await resp.json();
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (!raw) throw new Error('Pusta odpowiedź od AI');
-    const jsonStr = raw.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/```$/,'').trim();
-    const json = JSON.parse(jsonStr);
-    if (!json.sentence || !json.translation) throw new Error('Nieprawidłowa odpowiedź AI');
-    document.getElementById('field-sentence').value = json.sentence;
-    document.getElementById('field-translation').value = json.translation;
-    if (json.definition) document.getElementById('field-definition').value = json.definition;
+    // Jeśli brak zdania — skonstruuj na podstawie części mowy
+    if (!sentence) {
+      const wt = word.trim();
+      if (partOfSpeech === 'adjective') sentence = `She felt completely ${wt} after everything that had happened.`;
+      else if (partOfSpeech === 'verb')  sentence = `He chose to ${wt} despite all the difficulties he faced.`;
+      else if (partOfSpeech === 'noun')  sentence = `The ${wt} she showed impressed everyone around her.`;
+      else if (partOfSpeech === 'adverb') sentence = `She handled the situation ${wt} and without hesitation.`;
+      else sentence = `It was a truly ${wt} experience that she will never forget.`;
+    }
+    // Krok 2: MyMemory — tłumaczenie na polski (darmowe, bez klucza)
+    let translation = '';
+    if (sentence) {
+      statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Tłumaczę na polski...';
+      const transResp = await fetch(
+        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(sentence)}&langpair=en|pl`
+      );
+      if (transResp.ok) {
+        const transData = await transResp.json();
+        if (transData.responseStatus === 200 && transData.responseData?.translatedText) {
+          translation = transData.responseData.translatedText;
+        }
+      }
+    }
+    document.getElementById('field-sentence').value = sentence;
+    document.getElementById('field-translation').value = translation;
+    if (definition) document.getElementById('field-definition').value = definition;
     updateWordPreview();
-    statusEl.className = 'ai-status ok';
-    statusEl.textContent = '✓ Wygenerowano! Sprawdź i edytuj jeśli chcesz.';
+    if (sentence && translation) {
+      statusEl.className = 'ai-status ok';
+      statusEl.textContent = '✓ Gotowe! Sprawdź i popraw jeśli trzeba.';
+    } else if (sentence && !translation) {
+      statusEl.className = 'ai-status ok';
+      statusEl.textContent = '✓ Znaleziono zdanie — dodaj tłumaczenie ręcznie.';
+    } else {
+      statusEl.className = 'ai-status ok';
+      statusEl.textContent = '✓ Znaleziono definicję. Wpisz własne zdanie i tłumaczenie.';
+    }
   } catch(err) {
     statusEl.className = 'ai-status error';
-    statusEl.textContent = '✗ Błąd: ' + err.message;
+    statusEl.textContent = '✗ Błąd połączenia. Sprawdź internet i spróbuj ponownie.';
   } finally {
     btn.disabled = false;
   }
@@ -1479,7 +1484,6 @@ function renderSettings() {
   document.getElementById('setting-limit').value=State.settings.dailyLimit;
   document.getElementById('setting-notif-time').value=State.settings.notificationTime||'09:00';
   document.getElementById('notif-time-wrap').className='notification-time-wrap'+(State.settings.notificationsEnabled?' visible':'');
-  document.getElementById('setting-api-key').value=State.settings.claudeApiKey||'';
 }
 
 // ============ EXPORT / IMPORT ============
@@ -1567,7 +1571,7 @@ function setupEventListeners() {
   });
   // Press Enter in word field → trigger generate (if API key set)
   document.getElementById('field-word').addEventListener('keydown', e=>{
-    if(e.key==='Enter') { e.preventDefault(); if(State.settings.claudeApiKey) document.getElementById('btn-generate').click(); }
+    if(e.key==='Enter') { e.preventDefault(); document.getElementById('btn-generate').click(); }
   });
   document.getElementById('field-sentence').addEventListener('input',updateWordPreview);
   document.getElementById('field-word').addEventListener('input',()=>{ document.getElementById('ai-status').style.display='none'; updateWordPreview(); });
@@ -1623,15 +1627,6 @@ function setupEventListeners() {
   });
   document.getElementById('setting-notif-time').addEventListener('change',e=>{
     State.settings.notificationTime=e.target.value; saveSettings();
-  });
-  // API key save (on change/blur)
-  document.getElementById('setting-api-key').addEventListener('change',e=>{
-    State.settings.claudeApiKey=e.target.value.trim(); saveSettings();
-  });
-  // Toggle API key visibility
-  document.getElementById('btn-toggle-api-key').addEventListener('click',()=>{
-    const inp=document.getElementById('setting-api-key');
-    inp.type = inp.type==='password' ? 'text' : 'password';
   });
   document.getElementById('btn-export').addEventListener('click',exportData);
   document.getElementById('import-json-file').addEventListener('change',e=>{
