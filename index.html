@@ -189,6 +189,16 @@
     .translation-text { font-size: 22px; font-weight: 700; line-height: 1.4; margin-bottom: 12px; }
     .definition-text { font-size: 14px; color: var(--text2); margin-bottom: 8px; line-height: 1.5; }
     .hook-text { font-size: 14px; color: var(--warning); font-style: italic; background: #fef3c7; padding: 8px 12px; border-radius: 8px; }
+    .word-meaning-badge {
+      background: var(--accent);
+      color: white;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 20px;
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 12px;
+    }
     .rating-buttons {
       display: grid; grid-template-columns: 1fr 1fr 1fr 1fr;
       gap: 8px; margin-top: 16px;
@@ -446,6 +456,7 @@
               </div>
             </div>
             <div class="card-back">
+              <div class="word-meaning-badge" id="review-word-meaning" style="display:none"></div>
               <div class="card-label">Tłumaczenie (Polski)</div>
               <div class="speak-row">
                 <div class="translation-text" id="review-translation"></div>
@@ -512,6 +523,8 @@
           <label class="checkbox-option"><input type="checkbox" id="ex-type-2" checked> Type 2: Fill in the blank</label>
           <label class="checkbox-option"><input type="checkbox" id="ex-type-3" checked> Type 3: Polish→English word</label>
           <label class="checkbox-option" id="ex-type-4-label"><input type="checkbox" id="ex-type-4"> Type 4: Memory hook recall</label>
+          <label class="checkbox-option" id="ex-type-5-label"><input type="checkbox" id="ex-type-5" checked> Typ 5: Definicja → Słowo (angielski)</label>
+          <label class="checkbox-option" id="ex-type-6-label"><input type="checkbox" id="ex-type-6" checked> Typ 6: Słowo → Znaczenie (wybór)</label>
         </div>
       </div>
       <div>
@@ -606,6 +619,11 @@
         <div class="form-group">
           <label class="form-label">Tłumaczenie po polsku *</label>
           <textarea class="form-textarea" id="field-translation" placeholder="np. Była całkowicie olśniona zachodem słońca." required></textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Znaczenie słowa (PL) *</label>
+          <input type="text" class="form-input" id="field-word-meaning" placeholder="np. olśniony, oszołomiony">
+          <div class="form-hint" style="margin-top:4px">Samo polskie znaczenie słówka (bez pełnego zdania)</div>
         </div>
         <div class="form-group">
           <label class="form-label">Definicja po angielsku</label>
@@ -771,11 +789,11 @@
 <script>
 // ============ SAMPLE CARDS ============
 const SAMPLE_CARDS = [
-  { sentence:"She was completely awestruck by the beauty of the northern lights.", targetWord:"awestruck", translation:"Była całkowicie olśniona pięknem zorzy polarnej.", definition:"Filled with overwhelming wonder or admiration", memoryHook:"AWE + STRUCK — struck by awe like lightning", tags:["emotions","adjectives"] },
-  { sentence:"He tends to procrastinate when faced with difficult tasks.", targetWord:"procrastinate", translation:"Ma tendencję do odkładania trudnych zadań na później.", definition:"To delay or postpone doing something", memoryHook:"pro-CRAST-inate — putting things off until the crust of tomorrow", tags:["behaviour","verbs"] },
-  { sentence:"The new policy will significantly bolster our cybersecurity defenses.", targetWord:"bolster", translation:"Nowa polityka znacząco wzmocni nasze zabezpieczenia.", definition:"To strengthen or support something", memoryHook:"BOLSTER = bold + stronger", tags:["business","verbs"] },
-  { sentence:"I came across a serendipitous discovery while cleaning the attic.", targetWord:"serendipitous", translation:"Natknąłem się na szczęśliwe odkrycie podczas sprzątania strychu.", definition:"Occurring or discovered by chance in a happy way", memoryHook:"serendipity — the word from 'The Three Princes of Serendip'", tags:["adjectives"] },
-  { sentence:"She had to be very frugal during her first year abroad.", targetWord:"frugal", translation:"Musiała być bardzo oszczędna podczas pierwszego roku za granicą.", definition:"Careful about spending money; economical", memoryHook:"frugal sounds like 'frugal' — fruit + gallon = buying in bulk to save", tags:["lifestyle","adjectives"] }
+  { sentence:"She was completely awestruck by the beauty of the northern lights.", targetWord:"awestruck", translation:"Była całkowicie olśniona pięknem zorzy polarnej.", definition:"Filled with overwhelming wonder or admiration", memoryHook:"AWE + STRUCK — struck by awe like lightning", tags:["emotions","adjectives"], wordMeaning:"olśniony, oszołomiony" },
+  { sentence:"He tends to procrastinate when faced with difficult tasks.", targetWord:"procrastinate", translation:"Ma tendencję do odkładania trudnych zadań na później.", definition:"To delay or postpone doing something", memoryHook:"pro-CRAST-inate — putting things off until the crust of tomorrow", tags:["behaviour","verbs"], wordMeaning:"odkładać na później" },
+  { sentence:"The new policy will significantly bolster our cybersecurity defenses.", targetWord:"bolster", translation:"Nowa polityka znacząco wzmocni nasze zabezpieczenia.", definition:"To strengthen or support something", memoryHook:"BOLSTER = bold + stronger", tags:["business","verbs"], wordMeaning:"wzmacniać, wspierać" },
+  { sentence:"I came across a serendipitous discovery while cleaning the attic.", targetWord:"serendipitous", translation:"Natknąłem się na szczęśliwe odkrycie podczas sprzątania strychu.", definition:"Occurring or discovered by chance in a happy way", memoryHook:"serendipity — the word from 'The Three Princes of Serendip'", tags:["adjectives"], wordMeaning:"szczęśliwy przypadek" },
+  { sentence:"She had to be very frugal during her first year abroad.", targetWord:"frugal", translation:"Musiała być bardzo oszczędna podczas pierwszego roku za granicą.", definition:"Careful about spending money; economical", memoryHook:"frugal sounds like 'frugal' — fruit + gallon = buying in bulk to save", tags:["lifestyle","adjectives"], wordMeaning:"oszczędny" }
 ];
 
 // ============ STATE ============
@@ -824,6 +842,8 @@ function loadState() {
     const e=localStorage.getItem('vocab_exercise_history'); if(e) State.exerciseHistory=JSON.parse(e);
     const s=localStorage.getItem('vocab_settings'); if(s) State.settings=Object.assign(State.settings,JSON.parse(s));
   } catch(err) { console.error('Load error',err); }
+  // ensure all cards have wordMeaning field
+  State.cards.forEach(c=>{ if(c.wordMeaning===undefined) c.wordMeaning=''; });
   if(State.cards.length===0) {
     State.cards=SAMPLE_CARDS.map(sc=>({
       id:uuid(), ...sc, interval:1, easeFactor:2.5, repetitions:0,
@@ -895,7 +915,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v8';
+const CACHE='vocab-v10';
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/']))));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
 self.addEventListener('fetch',e=>{
@@ -1039,6 +1059,13 @@ function renderReview() {
   else hookWrap.style.display='none';
   const tagsEl=document.getElementById('review-tags');
   tagsEl.innerHTML=card.tags.map(t=>`<span class="tag-pill">${escHtml(t)}</span>`).join('');
+  const meaningEl=document.getElementById('review-word-meaning');
+  if(card.wordMeaning) {
+    meaningEl.textContent=card.wordMeaning;
+    meaningEl.style.display='block';
+  } else {
+    meaningEl.style.display='none';
+  }
   const ci=document.getElementById('card-inner');
   ci.classList.remove('flipped');
 }
@@ -1081,6 +1108,21 @@ function renderExerciseConfig() {
   t4label.classList.toggle('disabled',!hasHooks);
   t4cb.disabled=!hasHooks;
   if(!hasHooks) t4cb.checked=false;
+  // Type 5: needs definition
+  const hasDefinitions=State.cards.some(c=>c.definition);
+  const t5cb=document.getElementById('ex-type-5');
+  const t5label=document.getElementById('ex-type-5-label');
+  t5cb.disabled=!hasDefinitions;
+  t5label.classList.toggle('disabled',!hasDefinitions);
+  if(!hasDefinitions) t5cb.checked=false;
+  // Type 6: needs wordMeaning on multiple cards
+  const cardsWithMeaning=State.cards.filter(c=>c.wordMeaning);
+  const type6ok=cardsWithMeaning.length>=2;
+  const t6cb=document.getElementById('ex-type-6');
+  const t6label=document.getElementById('ex-type-6-label');
+  t6cb.disabled=!type6ok;
+  t6label.classList.toggle('disabled',!type6ok);
+  if(!type6ok) t6cb.checked=false;
 }
 
 function getExercisePool() {
@@ -1098,11 +1140,10 @@ function getExercisePool() {
 function startExSession() {
   const pool=getExercisePool();
   if(!pool.length) { alert('No cards available for the selected pool.'); return; }
-  const types=[];
-  if(document.getElementById('ex-type-1').checked) types.push(1);
-  if(document.getElementById('ex-type-2').checked) types.push(2);
-  if(document.getElementById('ex-type-3').checked) types.push(3);
-  if(document.getElementById('ex-type-4').checked) types.push(4);
+  const types=[1,2,3,4,5,6].filter(t=>{
+    const cb=document.getElementById(`ex-type-${t}`);
+    return cb && cb.checked && !cb.disabled;
+  });
   if(!types.length) { alert('Select at least one exercise type.'); return; }
   const lenVal=document.querySelector('input[name="ex-length"]:checked')?.value||'10';
   let count=lenVal==='custom'?parseInt(document.getElementById('ex-custom-count').value)||10:parseInt(lenVal);
@@ -1118,9 +1159,14 @@ function generateExercises(pool, types, count) {
   const exercises=[];
   for(let i=0;i<count;i++) {
     const card=shuffled[i%shuffled.length];
-    let eligibleTypes=[...types];
-    if(!card.memoryHook) eligibleTypes=eligibleTypes.filter(t=>t!==4);
-    if(!eligibleTypes.length) eligibleTypes=types.filter(t=>t!==4);
+    let eligibleTypes=[...types].filter(t=>{
+      if(t===4 && !card.memoryHook) return false;
+      if(t===5 && !card.definition) return false;
+      if(t===6 && !card.wordMeaning) return false;
+      if(t===6 && State.cards.filter(c=>c.wordMeaning && c.id!==card.id).length<1) return false;
+      return true;
+    });
+    if(!eligibleTypes.length) eligibleTypes=types.filter(t=>t!==4&&t!==5&&t!==6);
     if(!eligibleTypes.length) eligibleTypes=[1];
     const type=eligibleTypes[Math.floor(Math.random()*eligibleTypes.length)];
     exercises.push(buildExercise(card,type,pool));
@@ -1144,6 +1190,20 @@ function buildExercise(card, type, pool) {
   if(type===4) {
     return { card, type, question:card.memoryHook, hint:card.translation, answer:card.targetWord };
   }
+  if(type===5) {
+    return { card, type, question:card.definition, answer:card.targetWord };
+  }
+  if(type===6) {
+    const distractors=State.cards
+      .filter(c=>c.id!==card.id && c.wordMeaning)
+      .sort(()=>Math.random()-0.5)
+      .slice(0,3)
+      .map(c=>c.wordMeaning);
+    // pad if not enough distractors
+    while(distractors.length<3) distractors.push('—');
+    const options=[card.wordMeaning,...distractors].sort(()=>Math.random()-0.5);
+    return { card, type, options, answer:card.wordMeaning };
+  }
 }
 
 // ============ RENDER EXERCISE ============
@@ -1151,6 +1211,7 @@ function renderExercise() {
   if(!State.exSession) return;
   const { exercises, currentIndex } = State.exSession;
   if(currentIndex>=exercises.length) {
+    updateStreak();
     showScreen('screen-exercise-results');
     return;
   }
@@ -1161,7 +1222,7 @@ function renderExercise() {
   const ex=exercises[currentIndex];
   const area=document.getElementById('ex-area');
   area.innerHTML='';
-  if(ex.type===1) renderMCExercise(ex, area);
+  if(ex.type===1 || ex.type===6) renderMCExercise(ex, area);
   else renderTextExercise(ex, area);
 }
 
@@ -1176,14 +1237,30 @@ function makeSpeakBtn(textFn) {
 
 function renderMCExercise(ex, area) {
   const card=document.createElement('div'); card.className='exercise-card';
-  const typeLabel=document.createElement('div'); typeLabel.className='card-label'; typeLabel.textContent='Wybierz polskie tłumaczenie';
-  card.appendChild(typeLabel);
-  const qRow=document.createElement('div'); qRow.className='speak-row';
-  const q=document.createElement('div'); q.className='exercise-question';
-  q.innerHTML=highlightWord(escHtml(ex.card.sentence),escHtml(ex.card.targetWord));
-  qRow.appendChild(q);
-  qRow.appendChild(makeSpeakBtn(()=>ex.card.sentence));
-  card.appendChild(qRow);
+  const typeLabel=document.createElement('div'); typeLabel.className='card-label';
+  if(ex.type===6) {
+    typeLabel.textContent='Wybierz polskie znaczenie słowa';
+    card.appendChild(typeLabel);
+    // Show the target word large and centered
+    const wordDisplay=document.createElement('div');
+    wordDisplay.className='word-meaning-badge';
+    wordDisplay.style.cssText='font-size:32px; margin:16px 0; background:var(--surface2); color:var(--text);';
+    wordDisplay.textContent=ex.card.targetWord;
+    card.appendChild(wordDisplay);
+    // speak button for the word
+    const speakBtn=makeSpeakBtn(()=>ex.card.targetWord);
+    speakBtn.style.cssText='margin: 0 auto 8px auto;';
+    card.appendChild(speakBtn);
+  } else {
+    typeLabel.textContent='Wybierz polskie tłumaczenie';
+    card.appendChild(typeLabel);
+    const qRow=document.createElement('div'); qRow.className='speak-row';
+    const q=document.createElement('div'); q.className='exercise-question';
+    q.innerHTML=highlightWord(escHtml(ex.card.sentence),escHtml(ex.card.targetWord));
+    qRow.appendChild(q);
+    qRow.appendChild(makeSpeakBtn(()=>ex.card.sentence));
+    card.appendChild(qRow);
+  }
   const opts=ex.options||[];
   opts.forEach(opt=>{
     const btn=document.createElement('button'); btn.className='mc-option'; btn.textContent=opt;
@@ -1212,12 +1289,13 @@ function renderTextExercise(ex, area) {
   if(ex.type===2) labelText='Uzupełnij lukę — wpisz brakujące słowo';
   else if(ex.type===3) labelText='Polski → Angielski — wpisz angielskie słowo';
   else if(ex.type===4) labelText='Haczyk pamięciowy — jakie to słowo?';
+  else if(ex.type===5) labelText='Definicja → Słowo — wpisz angielskie słowo';
   const typeLabel=document.createElement('div'); typeLabel.className='card-label'; typeLabel.textContent=labelText;
   card.appendChild(typeLabel);
   const qRow=document.createElement('div'); qRow.className='speak-row';
   const q=document.createElement('div'); q.className='exercise-question'; q.textContent=ex.question||'';
   qRow.appendChild(q);
-  // Dla type 2 odtwórz zdanie po angielsku; type 3/4 nie ma sensu czytać po polsku
+  // For type 2 read the sentence; type 5 is a definition so no speak button
   if(ex.type===2) qRow.appendChild(makeSpeakBtn(()=>ex.card.sentence));
   card.appendChild(qRow);
   if(ex.type===4 && ex.hint) {
@@ -1291,7 +1369,7 @@ function renderExerciseResults() {
     if(!byType[r.exerciseType]) byType[r.exerciseType]=[];
     byType[r.exerciseType].push(r);
   });
-  const typeNames={1:'Multiple Choice',2:'Fill Blank',3:'Polish→EN',4:'Memory Hook'};
+  const typeNames={1:'Multiple Choice',2:'Fill Blank',3:'Polish→EN',4:'Memory Hook',5:'Definition→Word',6:'Word→Meaning'};
   let breakHtml='<table class="stats-table"><thead><tr><th>Type</th><th>Correct</th><th>Total</th></tr></thead><tbody>';
   Object.entries(byType).forEach(([t,rs])=>{
     const c=rs.filter(r=>r.correct).length;
@@ -1305,7 +1383,10 @@ function renderExerciseResults() {
     ww.style.display='block';
     document.getElementById('results-wrong-list').innerHTML=wrong.map(r=>{
       const card=State.cards.find(c=>c.id===r.cardId);
-      return `<div class="wrong-item"><div class="wrong-word">${escHtml(card?card.targetWord:r.cardId)}</div><div class="wrong-answer">Your answer: ${escHtml(r.userAnswer)} → Correct: ${escHtml(r.correctAnswer)}</div></div>`;
+      let correctDisplay=r.correctAnswer;
+      // For type 6, show the wordMeaning
+      if(r.exerciseType===6 && card && card.wordMeaning) correctDisplay=card.wordMeaning;
+      return `<div class="wrong-item"><div class="wrong-word">${escHtml(card?card.targetWord:r.cardId)}</div><div class="wrong-answer">Your answer: ${escHtml(r.userAnswer)} → Correct: ${escHtml(correctDisplay)}</div></div>`;
     }).join('');
   } else ww.style.display='none';
 }
@@ -1372,6 +1453,16 @@ async function generateWithAI(word) {
     document.getElementById('field-sentence').value = sentence;
     document.getElementById('field-translation').value = translation;
     if (definition) document.getElementById('field-definition').value = definition;
+    // Tłumaczenie samego słówka
+    const wordTransResp = await fetch(
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word.trim())}&langpair=en|pl`
+    );
+    if (wordTransResp.ok) {
+      const wtData = await wordTransResp.json();
+      if (wtData.responseStatus === 200 && wtData.responseData?.translatedText) {
+        document.getElementById('field-word-meaning').value = wtData.responseData.translatedText;
+      }
+    }
     updateWordPreview();
     if (sentence && translation) {
       statusEl.className = 'ai-status ok';
@@ -1399,8 +1490,9 @@ function renderAddCard() {
   document.getElementById('field-sentence').value=card?card.sentence:'';
   document.getElementById('field-word').value=card?card.targetWord:'';
   document.getElementById('field-translation').value=card?card.translation:'';
-  document.getElementById('field-definition').value=card?card.definition:'';
-  document.getElementById('field-hook').value=card?card.memoryHook:'';
+  document.getElementById('field-definition').value=card?(card.definition||''):'';
+  document.getElementById('field-hook').value=card?(card.memoryHook||''):'';
+  document.getElementById('field-word-meaning').value=card?(card.wordMeaning||''):'';
   State.currentTags=card?[...card.tags]:[];
   renderTagChips();
   updateWordPreview();
@@ -1441,12 +1533,13 @@ function saveCard(e) {
   const translation=document.getElementById('field-translation').value.trim();
   const definition=document.getElementById('field-definition').value.trim();
   const hook=document.getElementById('field-hook').value.trim();
+  const wordMeaning=document.getElementById('field-word-meaning').value.trim();
   if(!sentence||!word||!translation) { alert('Sentence, target word and translation are required.'); return; }
   if(State.editingCardId) {
     const card=State.cards.find(c=>c.id===State.editingCardId);
-    if(card) { card.sentence=sentence; card.targetWord=word; card.translation=translation; card.definition=definition; card.memoryHook=hook; card.tags=[...State.currentTags]; }
+    if(card) { card.sentence=sentence; card.targetWord=word; card.translation=translation; card.definition=definition; card.memoryHook=hook; card.tags=[...State.currentTags]; card.wordMeaning=wordMeaning; }
   } else {
-    State.cards.push({ id:uuid(), sentence, targetWord:word, translation, definition, memoryHook:hook, tags:[...State.currentTags], interval:1, easeFactor:2.5, repetitions:0, dueDate:todayISO(), dateAdded:todayISO(), lastReviewed:null });
+    State.cards.push({ id:uuid(), sentence, targetWord:word, translation, definition, memoryHook:hook, wordMeaning, tags:[...State.currentTags], interval:1, easeFactor:2.5, repetitions:0, dueDate:todayISO(), dateAdded:todayISO(), lastReviewed:null });
   }
   saveCards();
   State.editingCardId=null;
@@ -1467,7 +1560,7 @@ function importFromText(text) {
     if(parts.length<3) return;
     const [word,sentence,translation]=parts;
     if(!word||!sentence||!translation) return;
-    State.cards.push({ id:uuid(), sentence, targetWord:word, translation, definition:'', memoryHook:'', tags:[], interval:1, easeFactor:2.5, repetitions:0, dueDate:todayISO(), dateAdded:todayISO(), lastReviewed:null });
+    State.cards.push({ id:uuid(), sentence, targetWord:word, translation, definition:'', memoryHook:'', wordMeaning:'', tags:[], interval:1, easeFactor:2.5, repetitions:0, dueDate:todayISO(), dateAdded:todayISO(), lastReviewed:null });
     added++;
   });
   saveCards();
@@ -1576,7 +1669,10 @@ function exportData() {
 function importFromJSON(jsonStr) {
   try {
     const data=JSON.parse(jsonStr);
-    if(data.cards) { State.cards=data.cards; saveCards(); }
+    if(data.cards) {
+      State.cards=data.cards.map(c=>({ ...c, wordMeaning: c.wordMeaning||''}));
+      saveCards();
+    }
     if(data.studyHistory) { State.studyHistory=data.studyHistory; saveHistory(); }
     if(data.exerciseHistory) { State.exerciseHistory=data.exerciseHistory; saveExHistory(); }
     if(data.settings) { State.settings=Object.assign(State.settings,data.settings); saveSettings(); }
