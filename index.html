@@ -189,15 +189,23 @@
     .translation-text { font-size: 22px; font-weight: 700; line-height: 1.4; margin-bottom: 12px; }
     .definition-text { font-size: 14px; color: var(--text2); margin-bottom: 8px; line-height: 1.5; }
     .hook-text { font-size: 14px; color: var(--warning); font-style: italic; background: #fef3c7; padding: 8px 12px; border-radius: 8px; }
+    .card-back-word-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; margin-bottom: 8px;
+    }
+    .card-back-word {
+      font-size: 26px; font-weight: 800;
+      color: var(--accent); text-align: center;
+    }
     .word-meaning-badge {
       background: var(--accent);
       color: white;
-      border-radius: 8px;
-      padding: 8px 16px;
-      font-size: 20px;
+      border-radius: 10px;
+      padding: 10px 18px;
+      font-size: 22px;
       font-weight: 700;
       text-align: center;
-      margin-bottom: 12px;
+      margin-bottom: 4px;
     }
     .rating-buttons {
       display: grid; grid-template-columns: 1fr 1fr 1fr 1fr;
@@ -417,7 +425,8 @@
       </div>
       <div class="gap-8">
         <button class="btn-primary" id="btn-start-review">Review 0 Cards</button>
-        <button class="btn-secondary" id="btn-start-exercises">Start Exercises</button>
+        <button class="btn-secondary" id="btn-repeat-all" style="display:none">Powtórz wszystkie karty</button>
+        <button class="btn-secondary" id="btn-start-exercises">Ćwiczenia</button>
       </div>
       <div class="mt-24">
         <div class="section-title">14-Day Activity</div>
@@ -456,16 +465,24 @@
               </div>
             </div>
             <div class="card-back">
-              <div class="word-meaning-badge" id="review-word-meaning" style="display:none"></div>
-              <div class="card-label">Tłumaczenie (Polski)</div>
-              <div class="speak-row">
-                <div class="translation-text" id="review-translation"></div>
+              <!-- Słówko + przycisk głosu -->
+              <div class="card-back-word-row">
+                <div class="card-back-word" id="review-back-word"></div>
                 <button class="btn-speak" id="btn-speak-word" aria-label="Odsłuchaj słowo">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
                 </button>
               </div>
-              <div class="card-label">Definicja</div>
-              <div class="definition-text" id="review-definition"></div>
+              <!-- Znaczenie słowa po polsku -->
+              <div class="word-meaning-badge" id="review-word-meaning" style="display:none"></div>
+              <!-- Tłumaczenie całego zdania -->
+              <div class="card-label" style="margin-top:10px">Przykładowe zdanie</div>
+              <div class="translation-text" id="review-translation"></div>
+              <!-- Definicja -->
+              <div id="review-definition-wrap" style="display:none">
+                <div class="card-label">Definicja</div>
+                <div class="definition-text" id="review-definition"></div>
+              </div>
+              <!-- Haczyk pamięciowy -->
               <div id="review-hook-wrap" style="display:none">
                 <div class="card-label">Haczyk pamięciowy</div>
                 <div class="hook-text" id="review-hook"></div>
@@ -483,10 +500,11 @@
       <div id="review-complete" style="display:none">
         <div class="session-complete">
           <div class="session-complete-icon">🎉</div>
-          <h2>Session Complete!</h2>
-          <p id="review-complete-msg">You reviewed 0 cards.</p>
+          <h2>Sesja ukończona!</h2>
+          <p id="review-complete-msg">Powtórzyłaś 0 kart.</p>
           <div class="mt-24 gap-8">
-            <button class="btn-primary" id="btn-review-done">Back to Home</button>
+            <button class="btn-primary" id="btn-repeat-session">Powtórz jeszcze raz</button>
+            <button class="btn-secondary" id="btn-review-done">Wróć do ekranu głównego</button>
           </div>
         </div>
       </div>
@@ -915,7 +933,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v10';
+const CACHE='vocab-v13';
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/']))));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
 self.addEventListener('fetch',e=>{
@@ -1024,16 +1042,21 @@ function renderHome() {
   document.getElementById('home-streak').textContent=State.settings.streak+'🔥';
   document.getElementById('home-learned').textContent=State.cards.filter(c=>c.interval>7).length;
   const btn=document.getElementById('btn-start-review');
-  btn.textContent=`Review ${limited.length} Card${limited.length!==1?'s':''}`;
+  btn.textContent=`Powtórz ${limited.length} ${limited.length===1?'kartę':limited.length<5&&limited.length>1?'karty':'kart'}`;
   btn.disabled=limited.length===0;
+  // "Powtórz wszystkie" — widoczny gdy brak kart due, ale są jakieś karty
+  const repeatAllBtn=document.getElementById('btn-repeat-all');
+  repeatAllBtn.style.display=(limited.length===0 && State.cards.length>0)?'block':'none';
   setTimeout(()=>drawActivityChart('home-chart'),50);
 }
 
 // ============ REVIEW ============
-function startReview() {
-  const due=getDueCards().slice(0,State.settings.dailyLimit);
-  if(!due.length) return;
-  State.session={ queue:[...due], currentIndex:0, reviewed:0 };
+function startReview(forceAll=false) {
+  const pool = forceAll
+    ? shuffle(State.cards).slice(0,State.settings.dailyLimit)
+    : getDueCards().slice(0,State.settings.dailyLimit);
+  if(!pool.length) return;
+  State.session={ queue:[...pool], currentIndex:0, reviewed:0, forceAll };
   showScreen('screen-review');
 }
 function renderReview() {
@@ -1052,13 +1075,9 @@ function renderReview() {
   document.getElementById('review-progress-label').textContent=`${currentIndex+1} / ${total}`;
   document.getElementById('review-progress-fill').style.width=pct+'%';
   document.getElementById('review-sentence').innerHTML=highlightWord(escHtml(card.sentence), escHtml(card.targetWord));
-  document.getElementById('review-translation').textContent=card.translation;
-  document.getElementById('review-definition').textContent=card.definition||'—';
-  const hookWrap=document.getElementById('review-hook-wrap');
-  if(card.memoryHook) { hookWrap.style.display='block'; document.getElementById('review-hook').textContent=card.memoryHook; }
-  else hookWrap.style.display='none';
-  const tagsEl=document.getElementById('review-tags');
-  tagsEl.innerHTML=card.tags.map(t=>`<span class="tag-pill">${escHtml(t)}</span>`).join('');
+  // tył kartki — słówko na górze
+  document.getElementById('review-back-word').textContent=card.targetWord;
+  // znaczenie słówka po polsku (badge)
   const meaningEl=document.getElementById('review-word-meaning');
   if(card.wordMeaning) {
     meaningEl.textContent=card.wordMeaning;
@@ -1066,6 +1085,22 @@ function renderReview() {
   } else {
     meaningEl.style.display='none';
   }
+  // tłumaczenie całego zdania
+  document.getElementById('review-translation').textContent=card.translation;
+  // definicja — ukryj gdy pusta
+  const defWrap=document.getElementById('review-definition-wrap');
+  if(card.definition) {
+    document.getElementById('review-definition').textContent=card.definition;
+    defWrap.style.display='block';
+  } else {
+    defWrap.style.display='none';
+  }
+  // haczyk pamięciowy
+  const hookWrap=document.getElementById('review-hook-wrap');
+  if(card.memoryHook) { hookWrap.style.display='block'; document.getElementById('review-hook').textContent=card.memoryHook; }
+  else hookWrap.style.display='none';
+  const tagsEl=document.getElementById('review-tags');
+  tagsEl.innerHTML=card.tags.map(t=>`<span class="tag-pill">${escHtml(t)}</span>`).join('');
   const ci=document.getElementById('card-inner');
   ci.classList.remove('flipped');
 }
@@ -1073,7 +1108,7 @@ function showReviewComplete() {
   document.getElementById('review-card-area').style.display='none';
   document.getElementById('review-complete').style.display='block';
   const reviewed=State.session.reviewed||0;
-  document.getElementById('review-complete-msg').textContent=`You reviewed ${reviewed} card${reviewed!==1?'s':''}.`;
+  document.getElementById('review-complete-msg').textContent=`Powtórzyłaś ${reviewed} ${reviewed===1?'kartę':reviewed<5?'karty':'kart'}.`;
   updateStreak();
   renderHome();
 }
@@ -1724,6 +1759,11 @@ function setupEventListeners() {
   });
   document.getElementById('btn-review-back').addEventListener('click',()=>{ State.session=null; showScreen('screen-home'); });
   document.getElementById('btn-review-done').addEventListener('click',()=>{ State.session=null; showScreen('screen-home'); });
+  document.getElementById('btn-repeat-session').addEventListener('click',()=>{
+    State.session=null;
+    startReview(true); // zawsze losuje ze wszystkich przy powtórce
+  });
+  document.getElementById('btn-repeat-all').addEventListener('click',()=>startReview(true));
   document.getElementById('btn-ex-config-back').addEventListener('click',()=>showScreen('screen-home'));
   document.getElementById('btn-results-back').addEventListener('click',()=>{ State.exSession=null; showScreen('screen-home'); });
   document.getElementById('btn-add-back').addEventListener('click',()=>{ State.editingCardId=null; showScreen('screen-browse'); });
