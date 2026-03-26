@@ -933,7 +933,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v13';
+const CACHE='vocab-v14';
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/']))));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
 self.addEventListener('fetch',e=>{
@@ -1427,6 +1427,45 @@ function renderExerciseResults() {
 }
 
 // ============ AI GENERATION (bez klucza API) ============
+function buildFallbackSentence(word, pos) {
+  const w = word.trim();
+  const templates = {
+    adjective: [
+      `He was ${w} when he heard the news.`,
+      `She felt ${w} after a long day at work.`,
+      `The result was ${w} — better than expected.`,
+      `Everyone found the experience quite ${w}.`,
+      `His reaction seemed completely ${w} to me.`,
+    ],
+    verb: [
+      `She likes to ${w} every morning before breakfast.`,
+      `He decided to ${w} it before the meeting.`,
+      `They had to ${w} the whole plan from scratch.`,
+      `She forgot to ${w} before leaving the house.`,
+      `He always ${w}s when he needs to think clearly.`,
+    ],
+    noun: [
+      `Her ${w} helped her get through the hard times.`,
+      `He showed great ${w} under pressure.`,
+      `Everyone was surprised by her ${w}.`,
+      `She developed a strong ${w} for this kind of work.`,
+      `His ${w} impressed the whole team.`,
+    ],
+    adverb: [
+      `She ${w} agreed to take on the new project.`,
+      `He ${w} walked into the room and sat down.`,
+      `They ${w} decided to change their plans.`,
+      `She explained everything ${w} and clearly.`,
+    ],
+  };
+  const list = templates[pos] || [
+    `It was a ${w} moment she will never forget.`,
+    `He found the whole situation quite ${w}.`,
+    `She never expected it to turn out so ${w}.`,
+  ];
+  return list[Math.floor(Math.random() * list.length)];
+}
+
 async function generateWithAI(word) {
   const statusEl = document.getElementById('ai-status');
   const btn = document.getElementById('btn-generate');
@@ -1442,34 +1481,42 @@ async function generateWithAI(word) {
   statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam w słowniku...';
   statusEl.style.display = 'block';
   try {
-    // Krok 1: Free Dictionary API — zdanie przykładowe + definicja
+    // Krok 1: Free Dictionary API — zbierz WSZYSTKIE przykłady i wybierz najlepsze
     let sentence = '';
     let definition = '';
-    const dictResp = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`);
     let partOfSpeech = '';
+    const dictResp = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`);
     if (dictResp.ok) {
       const dictData = await dictResp.json();
+      const allExamples = [];
       for (const entry of dictData) {
         for (const meaning of entry.meanings) {
           if (!partOfSpeech) partOfSpeech = meaning.partOfSpeech || '';
           for (const def of meaning.definitions) {
             if (!definition) definition = def.definition;
-            if (!sentence && def.example) sentence = def.example;
-            if (sentence && definition) break;
+            if (def.example) {
+              const ex = def.example.trim();
+              const wordCount = ex.split(/\s+/).length;
+              // Tylko krótkie zdania (5–15 słów) zawierające szukane słowo
+              if (wordCount >= 5 && wordCount <= 15 && ex.toLowerCase().includes(w)) {
+                allExamples.push(ex);
+              }
+            }
           }
-          if (sentence && definition) break;
         }
-        if (sentence && definition) break;
+      }
+      if (allExamples.length > 0) {
+        // Wybierz najkrótsze zdanie
+        allExamples.sort((a, b) => a.split(/\s+/).length - b.split(/\s+/).length);
+        sentence = allExamples[0];
+        // Wielka litera na początku i kropka na końcu
+        sentence = sentence.charAt(0).toUpperCase() + sentence.slice(1);
+        if (!/[.!?]$/.test(sentence)) sentence += '.';
       }
     }
-    // Jeśli brak zdania — skonstruuj na podstawie części mowy
+    // Jeśli brak dobrego zdania ze słownika — użyj prostego szablonu
     if (!sentence) {
-      const wt = word.trim();
-      if (partOfSpeech === 'adjective') sentence = `She felt completely ${wt} after everything that had happened.`;
-      else if (partOfSpeech === 'verb')  sentence = `He chose to ${wt} despite all the difficulties he faced.`;
-      else if (partOfSpeech === 'noun')  sentence = `The ${wt} she showed impressed everyone around her.`;
-      else if (partOfSpeech === 'adverb') sentence = `She handled the situation ${wt} and without hesitation.`;
-      else sentence = `It was a truly ${wt} experience that she will never forget.`;
+      sentence = buildFallbackSentence(word.trim(), partOfSpeech);
     }
     // Krok 2: MyMemory — tłumaczenie na polski (darmowe, bez klucza)
     let translation = '';
