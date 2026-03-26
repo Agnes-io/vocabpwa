@@ -933,7 +933,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v14';
+const CACHE='vocab-v17';
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/']))));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
 self.addEventListener('fetch',e=>{
@@ -1427,43 +1427,126 @@ function renderExerciseResults() {
 }
 
 // ============ AI GENERATION (bez klucza API) ============
-function buildFallbackSentence(word, pos) {
+// Buduje zdanie na podstawie definicji — żeby pasowało do znaczenia słowa
+function buildContextualSentence(word, pos, definition) {
   const w = word.trim();
-  const templates = {
-    adjective: [
-      `He was ${w} when he heard the news.`,
-      `She felt ${w} after a long day at work.`,
-      `The result was ${w} — better than expected.`,
-      `Everyone found the experience quite ${w}.`,
-      `His reaction seemed completely ${w} to me.`,
-    ],
-    verb: [
-      `She likes to ${w} every morning before breakfast.`,
-      `He decided to ${w} it before the meeting.`,
-      `They had to ${w} the whole plan from scratch.`,
-      `She forgot to ${w} before leaving the house.`,
-      `He always ${w}s when he needs to think clearly.`,
-    ],
-    noun: [
-      `Her ${w} helped her get through the hard times.`,
-      `He showed great ${w} under pressure.`,
-      `Everyone was surprised by her ${w}.`,
-      `She developed a strong ${w} for this kind of work.`,
-      `His ${w} impressed the whole team.`,
-    ],
-    adverb: [
+  const def = (definition || '').toLowerCase();
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
+  if (pos === 'adjective' || (!pos && /\b(very|quite|rather|extremely)\b/.test(def))) {
+    if (/money|spend|cost|cheap|expens/.test(def))
+      return `She is very ${w} with her money.`;
+    if (/speak|eloquen|articul|express|communicat/.test(def))
+      return `He is known for being ${w} in his speeches.`;
+    if (/recover|bounce|tough|adversity|setback|hardship|retur|elastic|withstand/.test(def))
+      return `Despite all the setbacks, she remained ${w}.`;
+    if (/ordinary|everyday|normal|common|routine|boring|dull|tedious|humdrum|uninspir|unexcit|banal|prosaic/.test(def))
+      return `She found the job too ${w} and wanted something more exciting.`;
+    if (/happy|joy|content|satisf|pleas/.test(def))
+      return `She felt completely ${w} with her new life.`;
+    if (/sad|unhappy|depress|sorrow|gloomy/.test(def))
+      return `He looked ${w} when he came home that evening.`;
+    if (/hesitant|reluct|unwilling|resist|refuse/.test(def))
+      return `She was ${w} to ask for help, even when she needed it.`;
+    if (/brave|courage|fear|daring|bold/.test(def))
+      return `He was ${w} enough to speak up in front of everyone.`;
+    if (/luck|fortunate|favourable/.test(def))
+      return `It was a ${w} coincidence that they met that day.`;
+    if (/angry|furious|annoy|irritat/.test(def))
+      return `She was ${w} about the last-minute changes.`;
+    if (/confus|unclear|unsure|doubtful/.test(def))
+      return `He felt ${w} about what to do next.`;
+    return pick([
+      `She came across as very ${w} during the interview.`,
+      `His response was ${w} and well thought out.`,
+      `She remained ${w} even under pressure.`,
+      `Everyone agreed the outcome was ${w}.`,
+    ]);
+  }
+
+  if (pos === 'verb') {
+    if (/delay|postpone|put off|procrastin/.test(def))
+      return `She tends to ${w} when she doesn't feel like working.`;
+    if (/think|consider|reflect|ponder|contemplate/.test(def))
+      return `He likes to ${w} before making important decisions.`;
+    if (/avoid|escape|stay away|evade/.test(def))
+      return `She learned to ${w} situations that made her uncomfortable.`;
+    if (/improve|better|develop|enhance|strengthen/.test(def))
+      return `He worked hard to ${w} his skills over time.`;
+    if (/stop|quit|cease|end|finish/.test(def))
+      return `She finally decided to ${w} and move on.`;
+    if (/help|support|assist|aid|comfort/.test(def))
+      return `She was always ready to ${w} people in need.`;
+    if (/accept|agree|approve|allow|permit/.test(def))
+      return `He refused to ${w} without reading the contract first.`;
+    if (/change|transform|convert|turn/.test(def))
+      return `The experience helped her ${w} into a stronger person.`;
+    if (/speak|say|tell|express|communicat/.test(def))
+      return `He tried to ${w} his point without offending anyone.`;
+    if (/achieve|reach|accomplish|attain/.test(def))
+      return `She worked for years to ${w} her goal.`;
+    return pick([
+      `She tends to ${w} when she is under stress.`,
+      `He decided to ${w} instead of waiting any longer.`,
+      `She learned how to ${w} more effectively over time.`,
+      `They had no choice but to ${w}.`,
+    ]);
+  }
+
+  if (pos === 'noun') {
+    if (/luck|chance|coincidence|accident|unexpect/.test(def))
+      return `Finding this job was pure ${w}.`;
+    if (/sorrow|grief|pain|sadness|loss|mourn|suffer|hardship|distress|anguish/.test(def))
+      return `She struggled with a deep sense of ${w} after the loss.`;
+    if (/\bcourage\b|\bbravery\b|\bfear\b|\bdaring\b/.test(def))
+      return `It takes a lot of ${w} to speak in front of a large audience.`;
+    if (/determin|persist|continu|keep going|not giving up/.test(def))
+      return `Her ${w} paid off — she finally got the job she wanted.`;
+    if (/skill|ability|talent|capacity|gift/.test(def))
+      return `His ${w} for languages made him a great communicator.`;
+    if (/feeling|emotion|state of mind/.test(def))
+      return `She experienced a sudden feeling of ${w} when she walked in.`;
+    if (/change|progress|improve|develop|growth/.test(def))
+      return `The ${w} in her attitude surprised everyone around her.`;
+    if (/hatred|dislike|aversion|loath/.test(def))
+      return `His ${w} for dishonesty was well known.`;
+    if (/belief|trust|faith|confidence/.test(def))
+      return `She placed her ${w} in her team and they delivered.`;
+    return pick([
+      `Her ${w} impressed everyone around her.`,
+      `He showed great ${w} during the difficult period.`,
+      `It takes a lot of ${w} to do this kind of work.`,
+      `She developed a real sense of ${w} over the years.`,
+    ]);
+  }
+
+  if (pos === 'adverb') {
+    return pick([
       `She ${w} agreed to take on the new project.`,
       `He ${w} walked into the room and sat down.`,
-      `They ${w} decided to change their plans.`,
       `She explained everything ${w} and clearly.`,
-    ],
-  };
-  const list = templates[pos] || [
-    `It was a ${w} moment she will never forget.`,
-    `He found the whole situation quite ${w}.`,
-    `She never expected it to turn out so ${w}.`,
-  ];
-  return list[Math.floor(Math.random() * list.length)];
+      `He ${w} decided to change his plans.`,
+    ]);
+  }
+
+  return pick([
+    `She encountered ${w} for the first time and was surprised.`,
+    `He had never experienced such ${w} before.`,
+    `It was her first time dealing with ${w}.`,
+  ]);
+}
+
+async function fetchWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(timer);
+    return res;
+  } catch(e) {
+    clearTimeout(timer);
+    throw e;
+  }
 }
 
 async function generateWithAI(word) {
@@ -1478,84 +1561,126 @@ async function generateWithAI(word) {
   }
   btn.disabled = true;
   statusEl.className = 'ai-status loading';
-  statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam w słowniku...';
+  statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam zdania...';
   statusEl.style.display = 'block';
+
+  let sentence = '';
+  let translation = '';
+  let definition = '';
+  let partOfSpeech = '';
+
   try {
-    // Krok 1: Free Dictionary API — zbierz WSZYSTKIE przykłady i wybierz najlepsze
-    let sentence = '';
-    let definition = '';
-    let partOfSpeech = '';
-    const dictResp = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`);
-    if (dictResp.ok) {
-      const dictData = await dictResp.json();
-      const allExamples = [];
-      for (const entry of dictData) {
-        for (const meaning of entry.meanings) {
-          if (!partOfSpeech) partOfSpeech = meaning.partOfSpeech || '';
-          for (const def of meaning.definitions) {
-            if (!definition) definition = def.definition;
-            if (def.example) {
-              const ex = def.example.trim();
-              const wordCount = ex.split(/\s+/).length;
-              // Tylko krótkie zdania (5–15 słów) zawierające szukane słowo
-              if (wordCount >= 5 && wordCount <= 15 && ex.toLowerCase().includes(w)) {
-                allExamples.push(ex);
+    // === ŹRÓDŁO 1: Tatoeba — baza zdań do nauki języka, z tłumaczeniami PL ===
+    // Zdania pisane przez native speakerów, proste i naturalne
+    try {
+      const tatURL = `https://tatoeba.org/en/api_v0/search?from=eng&to=pol&query=${encodeURIComponent(w)}&trans_filter=limit&orphans=no&unapproved=no`;
+      const tatResp = await fetchWithTimeout(tatURL, 7000);
+      if (tatResp.ok) {
+        const tatData = await tatResp.json();
+        const candidates = [];
+        for (const r of (tatData.results || [])) {
+          const text = (r.text || '').trim();
+          const wc = text.split(/\s+/).length;
+          // Krótkie (6–14 słów), zawierające szukane słowo
+          if (wc >= 6 && wc <= 14 && text.toLowerCase().includes(w)) {
+            const plTrans = (r.translations || []).flat().find(t => t.lang === 'pol');
+            candidates.push({ text, pl: plTrans?.text || '', wc });
+          }
+        }
+        if (candidates.length > 0) {
+          // Preferuj zdania z tłumaczeniem PL, potem sortuj po długości
+          candidates.sort((a, b) => {
+            if (a.pl && !b.pl) return -1;
+            if (!a.pl && b.pl) return 1;
+            return a.wc - b.wc;
+          });
+          const best = candidates[0];
+          sentence = best.text.charAt(0).toUpperCase() + best.text.slice(1);
+          if (!/[.!?]$/.test(sentence)) sentence += '.';
+          translation = best.pl;
+        }
+      }
+    } catch(e) { /* Tatoeba niedostępna — idź dalej */ }
+
+    // === ŹRÓDŁO 2: Free Dictionary API — definicja + zdanie (jeśli Tatoeba nic nie dała) ===
+    try {
+      const dictResp = await fetchWithTimeout(
+        `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`, 6000
+      );
+      if (dictResp.ok) {
+        const dictData = await dictResp.json();
+        const allEx = [];
+        const allMeanings = [];
+        for (const entry of dictData) {
+          for (const meaning of entry.meanings) {
+            const mpos = meaning.partOfSpeech || '';
+            for (const def of meaning.definitions) {
+              allMeanings.push({ pos: mpos, def: def.definition || '' });
+              if (def.example) {
+                const ex = def.example.trim();
+                const wc = ex.split(/\s+/).length;
+                if (wc >= 5 && wc <= 15 && ex.toLowerCase().includes(w)) allEx.push(ex);
               }
             }
           }
         }
-      }
-      if (allExamples.length > 0) {
-        // Wybierz najkrótsze zdanie
-        allExamples.sort((a, b) => a.split(/\s+/).length - b.split(/\s+/).length);
-        sentence = allExamples[0];
-        // Wielka litera na początku i kropka na końcu
-        sentence = sentence.charAt(0).toUpperCase() + sentence.slice(1);
-        if (!/[.!?]$/.test(sentence)) sentence += '.';
-      }
-    }
-    // Jeśli brak dobrego zdania ze słownika — użyj prostego szablonu
-    if (!sentence) {
-      sentence = buildFallbackSentence(word.trim(), partOfSpeech);
-    }
-    // Krok 2: MyMemory — tłumaczenie na polski (darmowe, bez klucza)
-    let translation = '';
-    if (sentence) {
-      statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Tłumaczę na polski...';
-      const transResp = await fetch(
-        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(sentence)}&langpair=en|pl`
-      );
-      if (transResp.ok) {
-        const transData = await transResp.json();
-        if (transData.responseStatus === 200 && transData.responseData?.translatedText) {
-          translation = transData.responseData.translatedText;
+        // Prefer verb > adjective > adverb > noun to avoid archaic/specialised first meanings
+        for (const p of ['verb', 'adjective', 'adverb', 'noun']) {
+          const m = allMeanings.find(m => m.pos === p);
+          if (m) { partOfSpeech = m.pos; definition = m.def; break; }
+        }
+        if (!partOfSpeech && allMeanings.length > 0) {
+          partOfSpeech = allMeanings[0].pos;
+          definition = allMeanings[0].def;
+        }
+        if (!sentence && allEx.length > 0) {
+          allEx.sort((a, b) => a.split(/\s+/).length - b.split(/\s+/).length);
+          sentence = allEx[0].charAt(0).toUpperCase() + allEx[0].slice(1);
+          if (!/[.!?]$/.test(sentence)) sentence += '.';
         }
       }
+    } catch(e) { /* słownik niedostępny */ }
+
+    // === ŹRÓDŁO 3: Fallback — szablon oparty na definicji słowa ===
+    if (!sentence) sentence = buildContextualSentence(word.trim(), partOfSpeech, definition);
+
+    // === TŁUMACZENIE zdania (MyMemory) — tylko gdy Tatoeba nie dała PL ===
+    if (!translation && sentence) {
+      statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Tłumaczę na polski...';
+      try {
+        const trResp = await fetchWithTimeout(
+          `https://api.mymemory.translated.net/get?q=${encodeURIComponent(sentence)}&langpair=en|pl`, 8000
+        );
+        if (trResp.ok) {
+          const trData = await trResp.json();
+          if (trData.responseStatus === 200) translation = trData.responseData?.translatedText || '';
+        }
+      } catch(e) {}
     }
+
     document.getElementById('field-sentence').value = sentence;
     document.getElementById('field-translation').value = translation;
     if (definition) document.getElementById('field-definition').value = definition;
-    // Tłumaczenie samego słówka
-    const wordTransResp = await fetch(
-      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word.trim())}&langpair=en|pl`
-    );
-    if (wordTransResp.ok) {
-      const wtData = await wordTransResp.json();
-      if (wtData.responseStatus === 200 && wtData.responseData?.translatedText) {
-        document.getElementById('field-word-meaning').value = wtData.responseData.translatedText;
+
+    // === TŁUMACZENIE samego słówka ===
+    try {
+      const wtResp = await fetchWithTimeout(
+        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word.trim())}&langpair=en|pl`, 6000
+      );
+      if (wtResp.ok) {
+        const wtData = await wtResp.json();
+        if (wtData.responseStatus === 200 && wtData.responseData?.translatedText) {
+          document.getElementById('field-word-meaning').value = wtData.responseData.translatedText;
+        }
       }
-    }
+    } catch(e) {}
+
     updateWordPreview();
-    if (sentence && translation) {
-      statusEl.className = 'ai-status ok';
-      statusEl.textContent = '✓ Gotowe! Sprawdź i popraw jeśli trzeba.';
-    } else if (sentence && !translation) {
-      statusEl.className = 'ai-status ok';
-      statusEl.textContent = '✓ Znaleziono zdanie — dodaj tłumaczenie ręcznie.';
-    } else {
-      statusEl.className = 'ai-status ok';
-      statusEl.textContent = '✓ Znaleziono definicję. Wpisz własne zdanie i tłumaczenie.';
-    }
+    statusEl.className = 'ai-status ok';
+    statusEl.textContent = sentence && translation
+      ? '✓ Gotowe! Sprawdź i popraw jeśli trzeba.'
+      : sentence ? '✓ Znaleziono zdanie — dodaj tłumaczenie ręcznie.' : '✓ Gotowe.';
+
   } catch(err) {
     statusEl.className = 'ai-status error';
     statusEl.textContent = '✗ Błąd połączenia. Sprawdź internet i spróbuj ponownie.';
