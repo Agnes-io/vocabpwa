@@ -933,7 +933,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v17';
+const CACHE='vocab-v18';
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/']))));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
 self.addEventListener('fetch',e=>{
@@ -1436,6 +1436,18 @@ function buildContextualSentence(word, pos, definition) {
   if (pos === 'adjective' || (!pos && /\b(very|quite|rather|extremely)\b/.test(def))) {
     if (/money|spend|cost|cheap|expens/.test(def))
       return `She is very ${w} with her money.`;
+    if (/insolvent|bankrupt|default|unable.*pay|cannot.*pay/.test(def))
+      return `The company was declared ${w} after failing to repay its debts.`;
+    if (/\bsolvent\b|liquid.*asset|cash.*flow|meet.*obligation/.test(def))
+      return `The company must stay ${w} to meet its short-term obligations.`;
+    if (/leverag|geared|borrow.*capital/.test(def))
+      return `The firm is highly ${w}, which increases both risk and potential return.`;
+    if (/volatile|fluctuat|unstable|unpredictabl/.test(def))
+      return `The ${w} market made investors cautious about new positions.`;
+    if (/profitabl|viab|sustainabl/.test(def))
+      return `The startup finally became ${w} after two years of losses.`;
+    if (/fiscal|tax|budgetary|govern.*financ/.test(def))
+      return `The government introduced new ${w} measures to control spending.`;
     if (/speak|eloquen|articul|express|communicat/.test(def))
       return `He is known for being ${w} in his speeches.`;
     if (/recover|bounce|tough|adversity|setback|hardship|retur|elastic|withstand/.test(def))
@@ -1467,6 +1479,22 @@ function buildContextualSentence(word, pos, definition) {
   if (pos === 'verb') {
     if (/delay|postpone|put off|procrastin/.test(def))
       return `She tends to ${w} when she doesn't feel like working.`;
+    if (/invest|allocat|put.*money|capital/.test(def))
+      return `She decided to ${w} her savings in index funds.`;
+    if (/acquir|purchas|buy.*compan|take.*over/.test(def))
+      return `The corporation moved to ${w} a smaller competitor last year.`;
+    if (/negot|bargain|reach.*agreement/.test(def))
+      return `They spent weeks trying to ${w} a better deal.`;
+    if (/outsourc|contract.*out|delegat.*work/.test(def))
+      return `The firm decided to ${w} its IT operations to cut costs.`;
+    if (/diversif/.test(def))
+      return `It is important to ${w} your investment portfolio.`;
+    if (/audit|inspect.*account|examin.*financ/.test(def))
+      return `The regulators decided to ${w} the company's financial records.`;
+    if (/reimburse|compensat|refund|pay.*back/.test(def))
+      return `The company agreed to ${w} employees for their travel expenses.`;
+    if (/forecast|project|predict|estimat/.test(def))
+      return `Analysts tried to ${w} the company's earnings for next quarter.`;
     if (/think|consider|reflect|ponder|contemplate/.test(def))
       return `He likes to ${w} before making important decisions.`;
     if (/avoid|escape|stay away|evade/.test(def))
@@ -1496,6 +1524,40 @@ function buildContextualSentence(word, pos, definition) {
   if (pos === 'noun') {
     if (/luck|chance|coincidence|accident|unexpect/.test(def))
       return `Finding this job was pure ${w}.`;
+    if (/pledg|secur.*loan|collater|back.*loan|propert.*loan|loan.*propert/.test(def))
+      return `She offered her property as ${w} for the bank loan.`;
+    if (/price.*differ|exploit.*price|buy.*sell.*market|simultaneous.*buy|risk.*free.*profit/.test(def))
+      return `He made money through ${w} by exploiting price differences.`;
+    if (/depreciat|write.*off|declin.*value|reduc.*value|value.*asset.*time/.test(def))
+      return `The ${w} of equipment is calculated over its useful life.`;
+    if (/amortiz|pay.*off.*debt|scheduled.*payment|repay.*loan/.test(def))
+      return `The ${w} schedule showed fixed monthly payments over five years.`;
+    if (/availab.*cash|liquid.*asset|cash.*flow|liquid.*compan/.test(def))
+      return `The company maintained its ${w} throughout the financial crisis.`;
+    if (/leverag|borrow.*capital|amplif.*return|amplif.*gain/.test(def))
+      return `The company used ${w} to increase its potential returns.`;
+    if (/debt|liabilit|owe|obligation.*pay/.test(def))
+      return `The company struggled to manage its ${w} during the economic downturn.`;
+    if (/revenue|income|earning|turnover|profit/.test(def))
+      return `The firm's ${w} grew by 20% in the last quarter.`;
+    if (/invest|portfolio|fund|asset|capital/.test(def))
+      return `She diversified her ${w} to reduce risk.`;
+    if (/merger|acquisition|takeover|consolidat/.test(def))
+      return `The ${w} was approved by shareholders after months of negotiation.`;
+    if (/dividend|yield|return.*invest/.test(def))
+      return `Investors were pleased with the ${w} paid out this year.`;
+    if (/contract|agreement|deal|terms.*condit/.test(def))
+      return `Both parties signed the ${w} after weeks of discussion.`;
+    if (/budget|forecast|projection|target|plan/.test(def))
+      return `The team worked hard to stay within the ${w} set for the year.`;
+    if (/audit|compliance|regulat|oversight/.test(def))
+      return `The company passed its annual ${w} with no major findings.`;
+    if (/deficit|loss|shortfall|gap/.test(def))
+      return `The company reported a significant ${w} this quarter.`;
+    if (/inflation|deflation|price.*rise|cost.*living/.test(def))
+      return `Rising ${w} made it harder for families to save money.`;
+    if (/tax|levy|tariff|duty/.test(def))
+      return `The new ${w} on imports affected the entire industry.`;
     if (/sorrow|grief|pain|sadness|loss|mourn|suffer|hardship|distress|anguish/.test(def))
       return `She struggled with a deep sense of ${w} after the loss.`;
     if (/\bcourage\b|\bbravery\b|\bfear\b|\bdaring\b/.test(def))
@@ -1534,6 +1596,31 @@ function buildContextualSentence(word, pos, definition) {
     `He had never experienced such ${w} before.`,
     `It was her first time dealing with ${w}.`,
   ]);
+}
+
+// Tłumaczenie EN→PL: Google Translate (lepiej radzi sobie ze słownictwem specjalistycznym)
+// z fallbackiem na MyMemory jeśli Google niedostępny
+async function translateToPolish(text) {
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=pl&dt=t&q=${encodeURIComponent(text)}`;
+    const resp = await fetchWithTimeout(url, 7000);
+    if (resp.ok) {
+      const data = await resp.json();
+      const result = (data[0] || []).map(p => (p && p[0]) || '').join('').trim();
+      if (result) return result;
+    }
+  } catch(e) {}
+  try {
+    const resp = await fetchWithTimeout(
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|pl`, 8000
+    );
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.responseStatus === 200 && data.responseData?.translatedText)
+        return data.responseData.translatedText;
+    }
+  } catch(e) {}
+  return '';
 }
 
 async function fetchWithTimeout(url, ms) {
@@ -1644,18 +1731,10 @@ async function generateWithAI(word) {
     // === ŹRÓDŁO 3: Fallback — szablon oparty na definicji słowa ===
     if (!sentence) sentence = buildContextualSentence(word.trim(), partOfSpeech, definition);
 
-    // === TŁUMACZENIE zdania (MyMemory) — tylko gdy Tatoeba nie dała PL ===
+    // === TŁUMACZENIE zdania — tylko gdy Tatoeba nie dała PL ===
     if (!translation && sentence) {
       statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Tłumaczę na polski...';
-      try {
-        const trResp = await fetchWithTimeout(
-          `https://api.mymemory.translated.net/get?q=${encodeURIComponent(sentence)}&langpair=en|pl`, 8000
-        );
-        if (trResp.ok) {
-          const trData = await trResp.json();
-          if (trData.responseStatus === 200) translation = trData.responseData?.translatedText || '';
-        }
-      } catch(e) {}
+      translation = await translateToPolish(sentence);
     }
 
     document.getElementById('field-sentence').value = sentence;
@@ -1663,17 +1742,8 @@ async function generateWithAI(word) {
     if (definition) document.getElementById('field-definition').value = definition;
 
     // === TŁUMACZENIE samego słówka ===
-    try {
-      const wtResp = await fetchWithTimeout(
-        `https://api.mymemory.translated.net/get?q=${encodeURIComponent(word.trim())}&langpair=en|pl`, 6000
-      );
-      if (wtResp.ok) {
-        const wtData = await wtResp.json();
-        if (wtData.responseStatus === 200 && wtData.responseData?.translatedText) {
-          document.getElementById('field-word-meaning').value = wtData.responseData.translatedText;
-        }
-      }
-    } catch(e) {}
+    const wordMeaning = await translateToPolish(word.trim());
+    if (wordMeaning) document.getElementById('field-word-meaning').value = wordMeaning;
 
     updateWordPreview();
     statusEl.className = 'ai-status ok';
