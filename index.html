@@ -944,7 +944,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v19';
+const CACHE='vocab-v20';
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/']))));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));
 self.addEventListener('fetch',e=>{
@@ -1687,8 +1687,8 @@ async function generateWithAI(word) {
           body: JSON.stringify({
             model: 'claude-haiku-4-5-20251001',
             max_tokens: 60,
-            system: 'You write example sentences for vocabulary flashcards used by adult learners of English at B1/B2 level.\n\nStrict rules:\n- The sentence must be 10 to 18 words long.\n- Use simple, natural English — the kind a native speaker would say or write.\n- Grammar: no complex subordinate clauses, no passive constructions unless completely natural, no rare words except the target word.\n- Context: everyday professional life — office, emails, meetings, phone calls, shopping, travel, daily decisions at work.\n- The target word must appear exactly once and be used correctly in context.\n- Do NOT use metaphors, idioms (unless the word itself is an idiom), hypothetical "if one were to..." constructions, or academic/formal register.\n- Return ONLY the sentence. No explanation, no quotes, no extra punctuation.',
-            messages: [{ role: 'user', content: `Write one example sentence using the word: ${w}` }]
+            system: 'You are a vocabulary flashcard assistant. Your only job is to write one simple example sentence for a given English word.\n\nRules you must follow without exception:\n- Use the word in its most common, everyday meaning — never slang, idioms, or rare meanings\n- Write exactly one sentence, maximum 12 words\n- Use simple grammar: present simple, past simple, or present continuous only\n- Set the sentence in a real, everyday situation: home, café, office, shop, or travel\n- The sentence must make the word\'s meaning obvious from context\n- Return only the sentence — no quotes, no explanation, nothing else',
+            messages: [{ role: 'user', content: `Write one simple example sentence for the word: ${w}` }]
           })
         });
         clearTimeout(timer);
