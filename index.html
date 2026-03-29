@@ -944,7 +944,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v21';
+const CACHE='vocab-v22';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/'])));
   self.skipWaiting();
@@ -1550,6 +1550,15 @@ function buildContextualSentence(word, pos, definition) {
   if (pos === 'noun') {
     if (/luck|chance|coincidence|accident|unexpect/.test(def))
       return `Finding this job was pure ${w}.`;
+    // Everyday physical objects — must come before financial patterns to avoid false matches
+    if (/\bcup\b|drinking.*vessel|hot.*liquid|saucer|handle.*drink|pour.*drink/.test(def))
+      return `She poured hot coffee into her ${w} and went back to work.`;
+    if (/furniture|flat.*surface|surface.*accommodat|top.*surface/.test(def))
+      return `They sat around the ${w} and discussed the project.`;
+    if (/commercial.*document|document.*seller|seller.*buyer|issued.*seller|itemis/.test(def))
+      return `She sent the ${w} to the client after completing the work.`;
+    if (/running|moving.*feet|moving.*rapidly|movement.*feet/.test(def))
+      return `She goes for a ${w} in the park every morning.`;
     if (/pledg|secur.*loan|collater|back.*loan|propert.*loan|loan.*propert/.test(def))
       return `She offered her property as ${w} for the bank loan.`;
     if (/price.*differ|exploit.*price|buy.*sell.*market|simultaneous.*buy|risk.*free.*profit/.test(def))
@@ -1558,7 +1567,7 @@ function buildContextualSentence(word, pos, definition) {
       return `The ${w} of equipment is calculated over its useful life.`;
     if (/amortiz|pay.*off.*debt|scheduled.*payment|repay.*loan/.test(def))
       return `The ${w} schedule showed fixed monthly payments over five years.`;
-    if (/availab.*cash|liquid.*asset|cash.*flow|liquid.*compan/.test(def))
+    if (/availab.*cash|liquid.*asset|cash.*flow|liquid.*compan|easi.*conver|conver.*cash|readily.*trade|high.*supply.*demand/.test(def))
       return `The company maintained its ${w} throughout the financial crisis.`;
     if (/leverag|borrow.*capital|amplif.*return|amplif.*gain/.test(def))
       return `The company used ${w} to increase its potential returns.`;
@@ -1725,11 +1734,12 @@ async function generateWithAI(word) {
       if (tatResp.ok) {
         const tatData = await tatResp.json();
         const candidates = [];
+        // Whole-word regex: prevents "mugged" matching "mug", "tables" matching "table", etc.
+        const wRe = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
         for (const r of (tatData.results || [])) {
           const text = (r.text || '').trim();
           const wc = text.split(/\s+/).length;
-          // Krótkie (6–14 słów), zawierające szukane słowo
-          if (wc >= 6 && wc <= 14 && text.toLowerCase().includes(w)) {
+          if (wc >= 6 && wc <= 14 && wRe.test(text)) {
             const plTrans = (r.translations || []).flat().find(t => t.lang === 'pol');
             candidates.push({ text, pl: plTrans?.text || '', wc });
           }
@@ -1757,33 +1767,40 @@ async function generateWithAI(word) {
       );
       if (dictResp.ok) {
         const dictData = await dictResp.json();
-        const allEx = [];
+        // Each meaning stores its own example — prevents wrong-meaning examples
+        // (e.g. "gullible mug" example from slang def being used when we want the cup meaning)
         const allMeanings = [];
+        const exRe = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
         for (const entry of dictData) {
           for (const meaning of entry.meanings) {
             const mpos = meaning.partOfSpeech || '';
             for (const def of meaning.definitions) {
-              allMeanings.push({ pos: mpos, def: def.definition || '' });
+              let goodEx = '';
               if (def.example) {
                 const ex = def.example.trim();
                 const wc = ex.split(/\s+/).length;
-                if (wc >= 5 && wc <= 15 && ex.toLowerCase().includes(w)) allEx.push(ex);
+                if (wc >= 5 && wc <= 15 && exRe.test(ex)) goodEx = ex;
               }
+              allMeanings.push({ pos: mpos, def: def.definition || '', ex: goodEx });
             }
           }
         }
-        // Prefer verb > adjective > adverb > noun to avoid archaic/specialised first meanings
-        for (const p of ['verb', 'adjective', 'adverb', 'noun']) {
+        // noun > verb > adjective > adverb:
+        // dictionaries list most-common meaning first; noun priority fixes "mug"=cup not "mug"=assault
+        let selectedMeaning = null;
+        for (const p of ['noun', 'verb', 'adjective', 'adverb']) {
           const m = allMeanings.find(m => m.pos === p);
-          if (m) { partOfSpeech = m.pos; definition = m.def; break; }
+          if (m) { selectedMeaning = m; partOfSpeech = m.pos; definition = m.def; break; }
         }
-        if (!partOfSpeech && allMeanings.length > 0) {
-          partOfSpeech = allMeanings[0].pos;
-          definition = allMeanings[0].def;
+        if (!selectedMeaning && allMeanings.length > 0) {
+          selectedMeaning = allMeanings[0];
+          partOfSpeech = selectedMeaning.pos;
+          definition = selectedMeaning.def;
         }
-        if (!sentence && allEx.length > 0) {
-          allEx.sort((a, b) => a.split(/\s+/).length - b.split(/\s+/).length);
-          sentence = allEx[0].charAt(0).toUpperCase() + allEx[0].slice(1);
+        // Use example from THIS EXACT selected definition only — never from other definitions
+        // that might use the word in a completely different sense (e.g. "gullible mug" vs "coffee mug")
+        if (!sentence && selectedMeaning?.ex) {
+          sentence = selectedMeaning.ex.charAt(0).toUpperCase() + selectedMeaning.ex.slice(1);
           if (!/[.!?]$/.test(sentence)) sentence += '.';
         }
       }
