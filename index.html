@@ -1693,23 +1693,101 @@ async function generateWithAI(word, prevSentence = '') {
   let partOfSpeech = '';
 
   try {
-    // === ŹRÓDŁO 0: Claude API — najwyższa jakość zdań, jeśli klucz API ustawiony ===
-    if (State.claudeApiKey) {
+
+    // === ŹRÓDŁO 1: Tatoeba — najlepsze zdania, pisane przez native speakerów ===
+    // Próbujemy ZAWSZE — niezależnie od klucza API
+    try {
+      statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam naturalnych zdań...';
+      const tatURL = `https://tatoeba.org/en/api_v0/search?from=eng&to=pol&query=${encodeURIComponent(w)}&trans_filter=limit&orphans=no&unapproved=no`;
+      const tatResp = await fetchWithTimeout(tatURL, 8000);
+      if (tatResp.ok) {
+        const tatData = await tatResp.json();
+        const wRe = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&') + '\\b', 'i');
+        const candidates = [];
+        for (const r of (tatData.results || [])) {
+          const text = (r.text || '').trim();
+          const wc = text.split(/\s+/).length;
+          const isRepeat = isRegen && text.toLowerCase() === prevSentence.toLowerCase();
+          if (wc >= 5 && wc <= 16 && wRe.test(text) && !isRepeat) {
+            const plTrans = (r.translations || []).flat().find(t => t.lang === 'pol');
+            candidates.push({ text, pl: plTrans?.text || '', wc });
+          }
+        }
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => {
+            if (a.pl && !b.pl) return -1;
+            if (!a.pl && b.pl) return 1;
+            return a.wc - b.wc;
+          });
+          // Przy regeneracji losuj spośród kandydatów
+          const pickIdx = isRegen ? Math.floor(Math.random() * Math.min(candidates.length, 4)) : 0;
+          const best = candidates[pickIdx];
+          sentence = best.text.charAt(0).toUpperCase() + best.text.slice(1);
+          if (!/[.!?]$/.test(sentence)) sentence += '.';
+          translation = best.pl;
+        }
+      }
+    } catch(e) { /* Tatoeba niedostępna */ }
+
+    // === ŹRÓDŁO 2: Free Dictionary API — definicja i przykładowe zdania ===
+    try {
+      const dictResp = await fetchWithTimeout(
+        `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`, 6000
+      );
+      if (dictResp.ok) {
+        const dictData = await dictResp.json();
+        const exRe = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&') + '\\b', 'i');
+        const allMeanings = [];
+        for (const entry of dictData) {
+          for (const meaning of entry.meanings) {
+            const mpos = meaning.partOfSpeech || '';
+            for (const def of meaning.definitions) {
+              let goodEx = '';
+              if (def.example) {
+                const ex = def.example.trim();
+                const wc = ex.split(/\s+/).length;
+                const isRepeat = isRegen && ex.toLowerCase() === prevSentence.toLowerCase();
+                if (wc >= 4 && wc <= 16 && exRe.test(ex) && !isRepeat) goodEx = ex;
+              }
+              allMeanings.push({ pos: mpos, def: def.definition || '', ex: goodEx });
+            }
+          }
+        }
+        // Wybierz najbardziej podstawowe znaczenie (rzeczownik > czasownik > przymiotnik)
+        for (const p of ['noun', 'verb', 'adjective', 'adverb']) {
+          const m = allMeanings.find(m => m.pos === p);
+          if (m) { partOfSpeech = m.pos; definition = m.def;
+            if (!sentence && m.ex) {
+              sentence = m.ex.charAt(0).toUpperCase() + m.ex.slice(1);
+              if (!/[.!?]$/.test(sentence)) sentence += '.';
+            }
+            break;
+          }
+        }
+        if (!partOfSpeech && allMeanings.length > 0) {
+          partOfSpeech = allMeanings[0].pos;
+          definition = allMeanings[0].def;
+          if (!sentence && allMeanings[0].ex) {
+            sentence = allMeanings[0].ex.charAt(0).toUpperCase() + allMeanings[0].ex.slice(1);
+            if (!/[.!?]$/.test(sentence)) sentence += '.';
+          }
+        }
+      }
+    } catch(e) { /* słownik niedostępny */ }
+
+    // === ŹRÓDŁO 3: Claude API — tylko gdy brak zdania z powyższych źródeł ===
+    if (!sentence && State.claudeApiKey) {
       try {
-        statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie (Claude)...';
+        statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie (AI)...';
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 15000);
-        const regenVariations = [
-          'Set the sentence at home or in the kitchen.',
-          'Set the sentence at work or in an office.',
-          'Set the sentence in a café, shop, or restaurant.',
-          'Set the sentence outdoors or on the street.'
-        ];
-        const subjects = ['She','He','They','Anna','Tom','The child','My friend'];
+
+        const subjects = ['She', 'He', 'Tom', 'Anna', 'My friend', 'The woman', 'The man'];
         const subj = subjects[Math.floor(Math.random() * subjects.length)];
-        const variation = regenVariations[Math.floor(Math.random() * regenVariations.length)];
-        const prevNote = prevSentence ? ` The previous sentence was: "${prevSentence}" — write something completely different with a different verb and situation.` : '';
-        const userMsg = `Word: "${w}"\n\nWrite ONE short English sentence (10-14 words) using "${w}" in its most basic, everyday, physical meaning.\nStart with: ${subj}\nSetting: ${variation}${prevNote}\n\nReturn ONLY the sentence.`;
+        const contexts = ['at home', 'at work', 'in a café', 'in a shop', 'in the park', 'on the street'];
+        const ctx = contexts[Math.floor(Math.random() * contexts.length)];
+        const prevNote = isRegen ? ` Previous sentence to AVOID: "${prevSentence}"` : '';
+
         const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           signal: ctrl.signal,
@@ -1722,124 +1800,41 @@ async function generateWithAI(word, prevSentence = '') {
           body: JSON.stringify({
             model: 'claude-sonnet-4-6',
             max_tokens: 80,
-            system: `You create example sentences for English vocabulary flashcards, like a Cambridge or Oxford learner's dictionary.
+            system: `You write example sentences for English vocabulary flashcards. Style: Cambridge Learner's Dictionary.
 
-Always use the MOST COMMON, PHYSICAL, LITERAL meaning of the word — what a beginner dictionary shows first.
+Rules:
+- Use the most common, physical, literal meaning only. NEVER slang or rare meanings.
+- 8 to 14 words. Simple grammar. One clause.
+- Everyday scene: home, café, office, park, shop.
+- The word's meaning must be obvious from context.
+- Return ONLY the sentence. No quotes. No explanation.
 
-Perfect examples:
-mug → She filled her mug with hot tea and sat by the window.
-table → He put his keys on the table near the front door.
+Examples:
+mug → She poured hot tea into her favourite mug.
+table → He put his bag on the table and sat down.
 run → She goes for a run in the park every morning.
-bear → A bear walked out of the forest and stopped on the path.
-frugal → He bought only what he needed because he was frugal.
-deadline → The deadline was Friday, so she worked late on Thursday.
-invoice → She sent the invoice to the client after finishing the project.
-
-Return ONLY the sentence. No quotes. No labels. No explanation.`,
-            messages: [{ role: 'user', content: userMsg }]
+bear → A bear came out of the forest and walked slowly away.
+frugal → He was always frugal, spending only what he needed.
+deadline → The deadline is Friday, so she stayed late at work.`,
+            messages: [{ role: 'user', content: `Word: "${w}". Subject: ${subj}. Setting: ${ctx}.${prevNote} Write the sentence.` }]
           })
         });
         clearTimeout(timer);
         if (claudeResp.ok) {
           const claudeData = await claudeResp.json();
           const raw = (claudeData.content?.[0]?.text || '').trim();
-          if (raw) {
+          if (raw && raw.toLowerCase() !== prevSentence.toLowerCase()) {
             sentence = raw.charAt(0).toUpperCase() + raw.slice(1);
             if (!/[.!?]$/.test(sentence)) sentence += '.';
           }
         }
-      } catch(e) { /* Claude niedostępny — próbuj dalej */ }
+      } catch(e) { /* Claude niedostępny */ }
     }
 
-    // === ŹRÓDŁO 1: Tatoeba — baza zdań do nauki języka, z tłumaczeniami PL ===
-    // Zdania pisane przez native speakerów, proste i naturalne
-    if (!sentence) try {
-      const tatURL = `https://tatoeba.org/en/api_v0/search?from=eng&to=pol&query=${encodeURIComponent(w)}&trans_filter=limit&orphans=no&unapproved=no`;
-      const tatResp = await fetchWithTimeout(tatURL, 7000);
-      if (tatResp.ok) {
-        const tatData = await tatResp.json();
-        const candidates = [];
-        // Whole-word regex: prevents "mugged" matching "mug", "tables" matching "table", etc.
-        const wRe = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
-        for (const r of (tatData.results || [])) {
-          const text = (r.text || '').trim();
-          const wc = text.split(/\s+/).length;
-          // When regenerating, skip the sentence that was previously shown
-          if (wc >= 6 && wc <= 14 && wRe.test(text) && (!isRegen || text.toLowerCase() !== prevSentence.toLowerCase())) {
-            const plTrans = (r.translations || []).flat().find(t => t.lang === 'pol');
-            candidates.push({ text, pl: plTrans?.text || '', wc });
-          }
-        }
-        if (candidates.length > 0) {
-          // Preferuj zdania z tłumaczeniem PL, potem sortuj po długości
-          candidates.sort((a, b) => {
-            if (a.pl && !b.pl) return -1;
-            if (!a.pl && b.pl) return 1;
-            return a.wc - b.wc;
-          });
-          // When regenerating, pick a different candidate if more than one exists
-          const idx = isRegen && candidates.length > 1 ? 1 : 0;
-          const best = candidates[idx];
-          sentence = best.text.charAt(0).toUpperCase() + best.text.slice(1);
-          if (!/[.!?]$/.test(sentence)) sentence += '.';
-          translation = best.pl;
-        }
-      }
-    } catch(e) { /* Tatoeba niedostępna — idź dalej */ }
-
-    // === ŹRÓDŁO 2: Free Dictionary API — definicja + zdanie (jeśli Tatoeba nic nie dała) ===
-    // Zawsze pobieramy definicję/POS, nawet jeśli mamy już zdanie
-    try {
-      const dictResp = await fetchWithTimeout(
-        `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`, 6000
-      );
-      if (dictResp.ok) {
-        const dictData = await dictResp.json();
-        // Each meaning stores its own example — prevents wrong-meaning examples
-        // (e.g. "gullible mug" example from slang def being used when we want the cup meaning)
-        const allMeanings = [];
-        const exRe = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
-        for (const entry of dictData) {
-          for (const meaning of entry.meanings) {
-            const mpos = meaning.partOfSpeech || '';
-            for (const def of meaning.definitions) {
-              let goodEx = '';
-              if (def.example) {
-                const ex = def.example.trim();
-                const wc = ex.split(/\s+/).length;
-                // Skip if this is the sentence we're trying to regenerate away from
-                const isRepeat = isRegen && ex.toLowerCase() === prevSentence.toLowerCase();
-                if (wc >= 5 && wc <= 15 && exRe.test(ex) && !isRepeat) goodEx = ex;
-              }
-              allMeanings.push({ pos: mpos, def: def.definition || '', ex: goodEx });
-            }
-          }
-        }
-        // noun > verb > adjective > adverb:
-        // dictionaries list most-common meaning first; noun priority fixes "mug"=cup not "mug"=assault
-        let selectedMeaning = null;
-        for (const p of ['noun', 'verb', 'adjective', 'adverb']) {
-          const m = allMeanings.find(m => m.pos === p);
-          if (m) { selectedMeaning = m; partOfSpeech = m.pos; definition = m.def; break; }
-        }
-        if (!selectedMeaning && allMeanings.length > 0) {
-          selectedMeaning = allMeanings[0];
-          partOfSpeech = selectedMeaning.pos;
-          definition = selectedMeaning.def;
-        }
-        // Use example from THIS EXACT selected definition only — never from other definitions
-        // that might use the word in a completely different sense (e.g. "gullible mug" vs "coffee mug")
-        if (!sentence && selectedMeaning?.ex) {
-          sentence = selectedMeaning.ex.charAt(0).toUpperCase() + selectedMeaning.ex.slice(1);
-          if (!/[.!?]$/.test(sentence)) sentence += '.';
-        }
-      }
-    } catch(e) { /* słownik niedostępny */ }
-
-    // === ŹRÓDŁO 3: Fallback — szablon oparty na definicji słowa ===
+    // === ŹRÓDŁO 4: Fallback — szablon oparty na definicji ===
     if (!sentence) sentence = buildContextualSentence(word.trim(), partOfSpeech, definition);
 
-    // === TŁUMACZENIE zdania — tylko gdy Tatoeba nie dała PL ===
+    // === TŁUMACZENIE na polski ===
     if (!translation && sentence) {
       statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Tłumaczę na polski...';
       translation = await translateToPolish(sentence);
@@ -1849,7 +1844,6 @@ Return ONLY the sentence. No quotes. No labels. No explanation.`,
     document.getElementById('field-translation').value = translation;
     if (definition) document.getElementById('field-definition').value = definition;
 
-    // === TŁUMACZENIE samego słówka ===
     const wordMeaning = await translateToPolish(word.trim());
     if (wordMeaning) document.getElementById('field-word-meaning').value = wordMeaning;
 
