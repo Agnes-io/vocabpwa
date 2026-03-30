@@ -768,7 +768,15 @@
       <div class="divider"></div>
       <div class="section-title">AI — generowanie zdań</div>
       <div class="form-group">
-        <label class="form-label">Claude API Key <span style="font-size:11px;opacity:0.55">(opcjonalny — znacznie lepsze zdania)</span></label>
+        <label class="form-label">Merriam-Webster API Key <span style="font-size:11px;opacity:0.55">(najlepsze przykładowe zdania — darmowy klucz na dictionaryapi.com)</span></label>
+        <div class="api-key-row">
+          <input type="password" class="form-input" id="setting-mw-key" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autocomplete="off" spellcheck="false">
+          <button class="btn-secondary" id="btn-show-mw-key" style="padding:8px 14px;white-space:nowrap">Pokaż</button>
+        </div>
+        <div style="font-size:12px;opacity:0.5;margin-top:4px">Klucz zapisywany lokalnie w przeglądarce, nigdy nie jest wysyłany poza urządzenie.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Claude API Key <span style="font-size:11px;opacity:0.55">(opcjonalny — lepsze zdania gdy MW nie działa)</span></label>
         <div class="api-key-row">
           <input type="password" class="form-input" id="setting-claude-key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
           <button class="btn-secondary" id="btn-show-key" style="padding:8px 14px;white-space:nowrap">Pokaż</button>
@@ -830,6 +838,7 @@ const State = {
   exerciseHistory: [],
   settings: { darkMode:false, dailyLimit:20, notificationsEnabled:false, notificationTime:'09:00', lastStudyDate:null, streak:0 },
   claudeApiKey: '',
+  mwApiKey: '',
   session: null,
   exSession: null,
   editingCardId: null,
@@ -870,6 +879,7 @@ function loadState() {
     const e=localStorage.getItem('vocab_exercise_history'); if(e) State.exerciseHistory=JSON.parse(e);
     const s=localStorage.getItem('vocab_settings'); if(s) State.settings=Object.assign(State.settings,JSON.parse(s));
     const k=localStorage.getItem('vocab_claude_key'); if(k) State.claudeApiKey=k;
+    const k2=localStorage.getItem('vocab_mw_key'); if(k2) State.mwApiKey=k2;
   } catch(err) { console.error('Load error',err); }
   // ensure all cards have wordMeaning field
   State.cards.forEach(c=>{ if(c.wordMeaning===undefined) c.wordMeaning=''; });
@@ -944,7 +954,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v51';
+const CACHE='vocab-v52';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/'])));
   self.skipWaiting();
@@ -956,6 +966,8 @@ self.addEventListener('activate',e=>e.waitUntil(
 self.addEventListener('fetch',e=>{
   if(e.request.url.startsWith('https://generativelanguage.googleapis.com')) return;
   if(e.request.url.startsWith('https://api.anthropic.com')) return;
+  if(e.request.url.startsWith('https://www.dictionaryapi.com')) return;
+  if(e.request.url.startsWith('https://www.oxfordlearnersdictionaries.com')) return;
   if(e.request.method!=='GET') return;
   if(e.request.mode==='navigate'){
     e.respondWith(fetch(e.request).then(res=>{
@@ -1671,6 +1683,43 @@ async function fetchWithTimeout(url, ms) {
   }
 }
 
+// Strip Merriam-Webster inline markup from example sentences
+function stripMWMarkup(s) {
+  return s
+    .replace(/\{it\}|\{\/it\}|\{b\}|\{\/b\}|\{sc\}|\{\/sc\}|\{inf\}|\{\/inf\}|\{sup\}|\{\/sup\}/g, '')
+    .replace(/\{bc\}/g, ': ')
+    .replace(/\{ldquo\}/g, '\u201c')
+    .replace(/\{rdquo\}/g, '\u201d')
+    .replace(/\{[^}]+\}/g, '')
+    .trim();
+}
+
+// Walk MW Learner's API JSON and collect verbal illustration sentences
+function extractMWSentences(data) {
+  const out = [];
+  for (const entry of (Array.isArray(data) ? data : [])) {
+    if (typeof entry !== 'object' || !entry.def) continue;
+    for (const defSection of entry.def) {
+      for (const sseq of (defSection.sseq || [])) {
+        for (const sense of sseq) {
+          if (!Array.isArray(sense)) continue;
+          const senseObj = sense[0] === 'sense' ? sense[1]
+                         : sense[0] === 'pseq'  ? null : null;
+          const dtArr = senseObj?.dt || [];
+          for (const item of dtArr) {
+            if (item[0] === 'vis') {
+              for (const vis of (item[1] || [])) {
+                if (vis.t) out.push(stripMWMarkup(vis.t));
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
 async function generateWithAI(word, prevSentence = '') {
   const statusEl   = document.getElementById('ai-status');
   const btn        = document.getElementById('btn-generate');
@@ -1692,7 +1741,6 @@ async function generateWithAI(word, prevSentence = '') {
   let definition   = '';
   let partOfSpeech = '';
 
-  // Pomocnicza funkcja — czy zdanie jest "dobre" (nie śmieciowe)
   function isGoodSentence(s) {
     if (!s) return false;
     const wc = s.trim().split(/\s+/).length;
@@ -1702,13 +1750,88 @@ async function generateWithAI(word, prevSentence = '') {
     return true;
   }
 
+  // Pick from a list avoiding prevSentence; on regen rotate through candidates
+  function pickBest(candidates) {
+    if (!candidates.length) return null;
+    if (!isRegen) return candidates[0];
+    const others = candidates.filter(c => c.toLowerCase() !== prevSentence.toLowerCase());
+    if (others.length) return others[Math.floor(Math.random() * Math.min(others.length, 5))];
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  }
+
   try {
 
-    // ── ŹRÓDŁO 1: Claude API — ZAWSZE PIERWSZE gdy klucz ustawiony ──────────
-    // Claude daje najlepszą kontrolę nad jakością zdania
-    if (State.claudeApiKey) {
+    // ── ŹRÓDŁO 1: Merriam-Webster Learner's Dictionary ───────────────────────
+    // Real professionally written example sentences — highest quality
+    if (!sentence && State.mwApiKey) {
       try {
-        statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie...';
+        statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam zdań (Merriam-Webster)...';
+        const mwResp = await fetchWithTimeout(
+          `https://www.dictionaryapi.com/api/v3/references/learners/json/${encodeURIComponent(w)}?key=${encodeURIComponent(State.mwApiKey)}`,
+          8000
+        );
+        if (mwResp.ok) {
+          const mwData = await mwResp.json();
+          const sentences = extractMWSentences(mwData);
+          const wRe = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+          const good = sentences.filter(s => isGoodSentence(s) && wRe.test(s));
+          const picked = pickBest(good);
+          if (picked) {
+            sentence = picked.charAt(0).toUpperCase() + picked.slice(1);
+            if (!/[.!?]$/.test(sentence)) sentence += '.';
+          }
+          // Also grab definition from MW if available
+          if (!definition && Array.isArray(mwData) && mwData[0]?.def) {
+            for (const ds of mwData[0].def) {
+              for (const sseq of (ds.sseq || [])) {
+                for (const sense of sseq) {
+                  if (Array.isArray(sense) && sense[0] === 'sense') {
+                    const dt = sense[1]?.dt || [];
+                    for (const item of dt) {
+                      if (item[0] === 'text') {
+                        const cleaned = stripMWMarkup(item[1]).replace(/^:\s*/, '');
+                        if (cleaned.length > 5) { definition = cleaned; break; }
+                      }
+                    }
+                    if (definition) break;
+                  }
+                }
+                if (definition) break;
+              }
+              if (definition) break;
+            }
+          }
+        }
+      } catch(e) { /* MW niedostępny */ }
+    }
+
+    // ── ŹRÓDŁO 2: Oxford Learner's Dictionary scraping ────────────────────────
+    // <span class="x"> tags contain example sentences; CORS may block — try anyway
+    if (!sentence) {
+      try {
+        statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam zdań (Oxford)...';
+        const oxURL  = `https://www.oxfordlearnersdictionaries.com/definition/english/${encodeURIComponent(w)}`;
+        const oxResp = await fetchWithTimeout(oxURL, 8000);
+        if (oxResp.ok) {
+          const html = await oxResp.text();
+          const wRe  = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+          const matches = [...html.matchAll(/<span class="x">(.*?)<\/span>/g)];
+          const sentences = matches
+            .map(m => m[1].replace(/<[^>]+>/g, '').trim())
+            .filter(s => isGoodSentence(s) && wRe.test(s));
+          const picked = pickBest(sentences);
+          if (picked) {
+            sentence = picked.charAt(0).toUpperCase() + picked.slice(1);
+            if (!/[.!?]$/.test(sentence)) sentence += '.';
+          }
+        }
+      } catch(e) { /* Oxford CORS blocked or unavailable */ }
+    }
+
+    // ── ŹRÓDŁO 3: Claude API — gdy słowniki nie zadziałały ───────────────────
+    if (!sentence && State.claudeApiKey) {
+      try {
+        statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie (Claude)...';
         const ctrl  = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 15000);
         const subs  = ['She','He','Tom','Anna','My sister','The man','The woman','My colleague'];
@@ -1716,7 +1839,6 @@ async function generateWithAI(word, prevSentence = '') {
         const subj  = subs[Math.floor(Math.random() * subs.length)];
         const ctx   = ctxs[Math.floor(Math.random() * ctxs.length)];
         const avoid = isRegen ? ` Previous sentence (do not repeat): "${prevSentence}".` : '';
-
         const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST', signal: ctrl.signal,
           headers: {
@@ -1767,7 +1889,7 @@ bolster → The extra training helped to bolster her confidence before the exam.
       } catch(e) { /* Claude niedostępny — próbuj dalej */ }
     }
 
-    // ── ŹRÓDŁO 2: Tatoeba — zdania od native speakerów ──────────────────────
+    // ── ŹRÓDŁO 4: Tatoeba — zdania od native speakerów ──────────────────────
     if (!sentence) {
       try {
         statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam zdań (Tatoeba)...';
@@ -1779,16 +1901,16 @@ bolster → The extra training helped to bolster her confidence before the exam.
           const candidates = [];
           for (const r of (tatData.results || [])) {
             const text = (r.text || '').trim();
-            const skip = isRegen && text.toLowerCase() === prevSentence.toLowerCase();
-            if (isGoodSentence(text) && wRe.test(text) && !skip) {
+            if (isGoodSentence(text) && wRe.test(text)) {
               const plTrans = (r.translations || []).flat().find(t => t.lang === 'pol');
               candidates.push({ text, pl: plTrans?.text || '', wc: text.split(/\s+/).length });
             }
           }
           if (candidates.length > 0) {
             candidates.sort((a, b) => (b.pl ? 1 : 0) - (a.pl ? 1 : 0) || a.wc - b.wc);
-            const idx   = isRegen ? Math.floor(Math.random() * Math.min(candidates.length, 5)) : 0;
-            const best  = candidates[idx];
+            const texts  = candidates.map(c => c.text);
+            const picked = pickBest(texts);
+            const best   = candidates.find(c => c.text === picked) || candidates[0];
             sentence    = best.text.charAt(0).toUpperCase() + best.text.slice(1);
             if (!/[.!?]$/.test(sentence)) sentence += '.';
             translation = best.pl;
@@ -1797,9 +1919,7 @@ bolster → The extra training helped to bolster her confidence before the exam.
       } catch(e) { /* Tatoeba niedostępna */ }
     }
 
-    // ── ŹRÓDŁO 3: Free Dictionary API — TYLKO definicja, nie zdania ─────────
-    // Zdania z tego API są często śmieciowe (np. "Pure awesome; made of awesome")
-    // Używamy go wyłącznie do pobrania definicji i części mowy
+    // ── ŹRÓDŁO 5: Free Dictionary API — definicja i POS (nie zdania) ─────────
     try {
       const dictResp = await fetchWithTimeout(
         `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`, 6000
@@ -1810,25 +1930,24 @@ bolster → The extra training helped to bolster her confidence before the exam.
         for (const entry of dictData) {
           for (const meaning of entry.meanings) {
             for (const def of meaning.definitions) {
-              allMeanings.push({
-                pos: meaning.partOfSpeech || '',
-                def: def.definition || ''
-              });
+              allMeanings.push({ pos: meaning.partOfSpeech || '', def: def.definition || '' });
             }
           }
         }
-        for (const p of ['noun','verb','adjective','adverb']) {
-          const m = allMeanings.find(m => m.pos === p);
-          if (m) { partOfSpeech = m.pos; definition = m.def; break; }
-        }
-        if (!partOfSpeech && allMeanings.length > 0) {
-          partOfSpeech = allMeanings[0].pos;
-          definition   = allMeanings[0].def;
+        if (!definition) {
+          for (const p of ['noun','verb','adjective','adverb']) {
+            const m = allMeanings.find(m => m.pos === p);
+            if (m) { partOfSpeech = m.pos; definition = m.def; break; }
+          }
+          if (!partOfSpeech && allMeanings.length > 0) {
+            partOfSpeech = allMeanings[0].pos;
+            definition   = allMeanings[0].def;
+          }
         }
       }
     } catch(e) { /* słownik niedostępny */ }
 
-    // ── ŹRÓDŁO 4: Fallback szablon ───────────────────────────────────────────
+    // ── ŹRÓDŁO 6: Fallback szablon ───────────────────────────────────────────
     if (!sentence) sentence = buildContextualSentence(word.trim(), partOfSpeech, definition);
 
     // ── Tłumaczenie ──────────────────────────────────────────────────────────
@@ -2031,6 +2150,7 @@ function renderSettings() {
   document.getElementById('setting-limit').value=State.settings.dailyLimit;
   document.getElementById('setting-notif-time').value=State.settings.notificationTime||'09:00';
   document.getElementById('notif-time-wrap').className='notification-time-wrap'+(State.settings.notificationsEnabled?' visible':'');
+  document.getElementById('setting-mw-key').value=State.mwApiKey||'';
   document.getElementById('setting-claude-key').value=State.claudeApiKey||'';
 }
 
@@ -2201,6 +2321,16 @@ function setupEventListeners() {
   });
   document.getElementById('setting-notif-time').addEventListener('change',e=>{
     State.settings.notificationTime=e.target.value; saveSettings();
+  });
+  document.getElementById('setting-mw-key').addEventListener('input',e=>{
+    State.mwApiKey=e.target.value.trim();
+    localStorage.setItem('vocab_mw_key', State.mwApiKey);
+  });
+  document.getElementById('btn-show-mw-key').addEventListener('click',()=>{
+    const inp=document.getElementById('setting-mw-key');
+    const btn=document.getElementById('btn-show-mw-key');
+    inp.type=inp.type==='password'?'text':'password';
+    btn.textContent=inp.type==='password'?'Pokaż':'Ukryj';
   });
   document.getElementById('setting-claude-key').addEventListener('input',e=>{
     State.claudeApiKey=e.target.value.trim();
