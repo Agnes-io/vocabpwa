@@ -944,7 +944,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v40';
+const CACHE='vocab-v50';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/'])));
   self.skipWaiting();
@@ -1696,12 +1696,9 @@ async function generateWithAI(word, prevSentence = '') {
   function isGoodSentence(s) {
     if (!s) return false;
     const wc = s.trim().split(/\s+/).length;
-    if (wc < 4 || wc > 20) return false;
-    // Odrzuć śmieciowe zdania z Free Dictionary (np. "Pure awesome; made of awesome")
-    if (/^(pure |made of |so |very |extremely )\S/i.test(s)) return false;
+    if (wc < 4 || wc > 25) return false;
+    if (/^(pure |made of |consisting of |characterized by )/i.test(s)) return false;
     if ((s.match(/;/g) || []).length > 1) return false;
-    // Musi zawierać czasownik (uproszczone sprawdzenie)
-    if (!/\b(is|are|was|were|has|have|had|do|does|did|will|would|can|could|should|go|went|put|left|saw|came|took|made|got|said|found|felt|looked|walked|ran|sat|stood|told|asked|gave|knew|thought|seemed|became|showed|kept|let|began|brought|heard|helped|worked|used|played|opened|started|tried|liked|loved|wanted|needed|turned|called|moved|lived|felt|bought|sent|set|read|led|grew|fell|understood|met)\b/i.test(s)) return false;
     return true;
   }
 
@@ -1731,24 +1728,27 @@ async function generateWithAI(word, prevSentence = '') {
           body: JSON.stringify({
             model: 'claude-sonnet-4-6',
             max_tokens: 80,
-            system: `You write example sentences for English vocabulary flashcards. Follow the style of Cambridge Learner's Dictionary.
+            system: `You are a vocabulary flashcard assistant. Write ONE example sentence for the given word.
 
-Rules:
-- 8 to 14 words only
-- Simple grammar: past simple or present simple preferred
-- Real everyday situation: home, café, park, office, shop, travel
-- The word's meaning must be clear from the sentence
-- Return ONLY the sentence — no quotes, no explanation, nothing else
+The sentence MUST:
+- Be 8 to 15 words long
+- Use simple past or present simple tense
+- Show a real everyday scene (home, café, office, park, street, shop)
+- Make the word meaning completely clear from context
+- Sound like it comes from Cambridge or Oxford Learner's Dictionary
 
-Good examples (imitate exactly):
-awesome → The view from the top of the mountain was truly awesome.
-mug → She wrapped her hands around a warm mug of coffee.
-table → He put his laptop on the table and started working.
-run → She goes for a run in the park every morning.
-frugal → He was frugal at the supermarket, buying only what he needed.
-deadline → The deadline was Friday, so she worked late on Thursday.
-bear → A bear came out of the forest and stopped on the path.
-procrastinate → He kept procrastinating and didn't finish his homework until midnight.`,
+Return ONLY the sentence. No quotes. No explanation. No word label. Just the sentence itself.
+
+Study these perfect examples and copy their style exactly:
+awesome → The view from the mountain top was absolutely awesome.
+mug → She filled her mug with hot tea and sat by the window.
+frugal → He was always frugal, buying only what he really needed.
+procrastinate → She kept procrastinating and almost missed her deadline.
+deadline → The deadline was Friday, so he stayed late at the office.
+table → She put her coffee on the table and opened her laptop.
+run → He goes for a run in the park every morning before breakfast.
+awestruck → She stood awestruck in front of the huge waterfall.
+bolster → The extra training helped to bolster her confidence before the exam.\`,
             messages: [{
               role: 'user',
               content: `Word: "${w}". Start with: ${subj}. Setting: ${ctx}.${avoid} Write the sentence.`
