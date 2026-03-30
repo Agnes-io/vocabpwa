@@ -944,7 +944,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v24';
+const CACHE='vocab-v31';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/'])));
   self.skipWaiting();
@@ -1673,8 +1673,8 @@ async function fetchWithTimeout(url, ms) {
 
 async function generateWithAI(word, prevSentence = '') {
   const statusEl = document.getElementById('ai-status');
-  const btn = document.getElementById('btn-generate');
-  const w = word.trim().toLowerCase();
+  const btn      = document.getElementById('btn-generate');
+  const w        = word.trim().toLowerCase();
   if (!w) {
     statusEl.className = 'ai-status error';
     statusEl.textContent = '⚠ Wpisz słówko przed generowaniem.';
@@ -1687,17 +1687,17 @@ async function generateWithAI(word, prevSentence = '') {
   statusEl.style.display = 'block';
 
   const isRegen = prevSentence.length > 0;
-  let sentence = '';
+  let sentence    = '';
   let translation = '';
-  let definition = '';
+  let definition  = '';
   let partOfSpeech = '';
 
   try {
 
-    // === ŹRÓDŁO 1: Tatoeba — najlepsze zdania, pisane przez native speakerów ===
-    // Próbujemy ZAWSZE — niezależnie od klucza API
+    // ── ŹRÓDŁO 1: Tatoeba ────────────────────────────────────────────────────
+    // Zdania pisane przez native speakerów do nauki języka — najlepsza jakość
     try {
-      statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam naturalnych zdań...';
+      statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam zdań (Tatoeba)...';
       const tatURL = `https://tatoeba.org/en/api_v0/search?from=eng&to=pol&query=${encodeURIComponent(w)}&trans_filter=limit&orphans=no&unapproved=no`;
       const tatResp = await fetchWithTimeout(tatURL, 8000);
       if (tatResp.ok) {
@@ -1706,30 +1706,25 @@ async function generateWithAI(word, prevSentence = '') {
         const candidates = [];
         for (const r of (tatData.results || [])) {
           const text = (r.text || '').trim();
-          const wc = text.split(/\s+/).length;
-          const isRepeat = isRegen && text.toLowerCase() === prevSentence.toLowerCase();
-          if (wc >= 5 && wc <= 16 && wRe.test(text) && !isRepeat) {
+          const wc   = text.split(/\s+/).length;
+          const skip = isRegen && text.toLowerCase() === prevSentence.toLowerCase();
+          if (wc >= 5 && wc <= 18 && wRe.test(text) && !skip) {
             const plTrans = (r.translations || []).flat().find(t => t.lang === 'pol');
             candidates.push({ text, pl: plTrans?.text || '', wc });
           }
         }
         if (candidates.length > 0) {
-          candidates.sort((a, b) => {
-            if (a.pl && !b.pl) return -1;
-            if (!a.pl && b.pl) return 1;
-            return a.wc - b.wc;
-          });
-          // Przy regeneracji losuj spośród kandydatów
-          const pickIdx = isRegen ? Math.floor(Math.random() * Math.min(candidates.length, 4)) : 0;
-          const best = candidates[pickIdx];
-          sentence = best.text.charAt(0).toUpperCase() + best.text.slice(1);
+          candidates.sort((a, b) => (b.pl ? 1 : 0) - (a.pl ? 1 : 0) || a.wc - b.wc);
+          const idx  = isRegen ? Math.floor(Math.random() * Math.min(candidates.length, 5)) : 0;
+          const best = candidates[idx];
+          sentence    = best.text.charAt(0).toUpperCase() + best.text.slice(1);
           if (!/[.!?]$/.test(sentence)) sentence += '.';
           translation = best.pl;
         }
       }
     } catch(e) { /* Tatoeba niedostępna */ }
 
-    // === ŹRÓDŁO 2: Free Dictionary API — definicja i przykładowe zdania ===
+    // ── ŹRÓDŁO 2: Free Dictionary API ───────────────────────────────────────
     try {
       const dictResp = await fetchWithTimeout(
         `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`, 6000
@@ -1740,23 +1735,23 @@ async function generateWithAI(word, prevSentence = '') {
         const allMeanings = [];
         for (const entry of dictData) {
           for (const meaning of entry.meanings) {
-            const mpos = meaning.partOfSpeech || '';
             for (const def of meaning.definitions) {
               let goodEx = '';
               if (def.example) {
                 const ex = def.example.trim();
                 const wc = ex.split(/\s+/).length;
-                const isRepeat = isRegen && ex.toLowerCase() === prevSentence.toLowerCase();
-                if (wc >= 4 && wc <= 16 && exRe.test(ex) && !isRepeat) goodEx = ex;
+                const skip = isRegen && ex.toLowerCase() === prevSentence.toLowerCase();
+                if (wc >= 4 && wc <= 18 && exRe.test(ex) && !skip) goodEx = ex;
               }
-              allMeanings.push({ pos: mpos, def: def.definition || '', ex: goodEx });
+              allMeanings.push({ pos: meaning.partOfSpeech || '', def: def.definition || '', ex: goodEx });
             }
           }
         }
-        // Wybierz najbardziej podstawowe znaczenie (rzeczownik > czasownik > przymiotnik)
-        for (const p of ['noun', 'verb', 'adjective', 'adverb']) {
+        for (const p of ['noun','verb','adjective','adverb']) {
           const m = allMeanings.find(m => m.pos === p);
-          if (m) { partOfSpeech = m.pos; definition = m.def;
+          if (m) {
+            partOfSpeech = m.pos;
+            definition   = m.def;
             if (!sentence && m.ex) {
               sentence = m.ex.charAt(0).toUpperCase() + m.ex.slice(1);
               if (!/[.!?]$/.test(sentence)) sentence += '.';
@@ -1766,7 +1761,7 @@ async function generateWithAI(word, prevSentence = '') {
         }
         if (!partOfSpeech && allMeanings.length > 0) {
           partOfSpeech = allMeanings[0].pos;
-          definition = allMeanings[0].def;
+          definition   = allMeanings[0].def;
           if (!sentence && allMeanings[0].ex) {
             sentence = allMeanings[0].ex.charAt(0).toUpperCase() + allMeanings[0].ex.slice(1);
             if (!/[.!?]$/.test(sentence)) sentence += '.';
@@ -1775,22 +1770,19 @@ async function generateWithAI(word, prevSentence = '') {
       }
     } catch(e) { /* słownik niedostępny */ }
 
-    // === ŹRÓDŁO 3: Claude API — tylko gdy brak zdania z powyższych źródeł ===
+    // ── ŹRÓDŁO 3: Claude — gdy brak zdania z zewnętrznych źródeł ────────────
     if (!sentence && State.claudeApiKey) {
       try {
         statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie (AI)...';
-        const ctrl = new AbortController();
+        const ctrl  = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 15000);
-
-        const subjects = ['She', 'He', 'Tom', 'Anna', 'My friend', 'The woman', 'The man'];
-        const subj = subjects[Math.floor(Math.random() * subjects.length)];
-        const contexts = ['at home', 'at work', 'in a café', 'in a shop', 'in the park', 'on the street'];
-        const ctx = contexts[Math.floor(Math.random() * contexts.length)];
-        const prevNote = isRegen ? ` Previous sentence to AVOID: "${prevSentence}"` : '';
-
+        const subs  = ['She','He','Tom','Anna','My friend','The boy','The woman'];
+        const ctxs  = ['at home','in a café','at work','in a shop','in the park','on the street'];
+        const subj  = subs[Math.floor(Math.random() * subs.length)];
+        const ctx   = ctxs[Math.floor(Math.random() * ctxs.length)];
+        const avoid = isRegen ? ` Do NOT write: "${prevSentence}".` : '';
         const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          signal: ctrl.signal,
+          method: 'POST', signal: ctrl.signal,
           headers: {
             'Content-Type': 'application/json',
             'x-api-key': State.claudeApiKey,
@@ -1800,23 +1792,17 @@ async function generateWithAI(word, prevSentence = '') {
           body: JSON.stringify({
             model: 'claude-sonnet-4-6',
             max_tokens: 80,
-            system: `You write example sentences for English vocabulary flashcards. Style: Cambridge Learner's Dictionary.
-
-Rules:
-- Use the most common, physical, literal meaning only. NEVER slang or rare meanings.
-- 8 to 14 words. Simple grammar. One clause.
-- Everyday scene: home, café, office, park, shop.
-- The word's meaning must be obvious from context.
-- Return ONLY the sentence. No quotes. No explanation.
-
+            system: `Write example sentences for English vocabulary flashcards. Style: Cambridge Learner's Dictionary.
+Use the most common, physical, literal meaning only. Never slang or rare meanings.
+8–14 words. Simple grammar. One clause. Everyday scene.
+Return ONLY the sentence. No quotes. No labels.
 Examples:
-mug → She poured hot tea into her favourite mug.
-table → He put his bag on the table and sat down.
+mug → She filled her mug with hot coffee.
+awesome → The view from the mountain was awesome.
+table → He left his keys on the table by the door.
 run → She goes for a run in the park every morning.
-bear → A bear came out of the forest and walked slowly away.
-frugal → He was always frugal, spending only what he needed.
-deadline → The deadline is Friday, so she stayed late at work.`,
-            messages: [{ role: 'user', content: `Word: "${w}". Subject: ${subj}. Setting: ${ctx}.${prevNote} Write the sentence.` }]
+bear → A bear walked slowly out of the forest.`,
+            messages: [{ role: 'user', content: `Word: "${w}". Subject: ${subj}. Scene: ${ctx}.${avoid} Write the sentence now.` }]
           })
         });
         clearTimeout(timer);
@@ -1831,16 +1817,16 @@ deadline → The deadline is Friday, so she stayed late at work.`,
       } catch(e) { /* Claude niedostępny */ }
     }
 
-    // === ŹRÓDŁO 4: Fallback — szablon oparty na definicji ===
+    // ── ŹRÓDŁO 4: Fallback szablon ───────────────────────────────────────────
     if (!sentence) sentence = buildContextualSentence(word.trim(), partOfSpeech, definition);
 
-    // === TŁUMACZENIE na polski ===
+    // ── Tłumaczenie ──────────────────────────────────────────────────────────
     if (!translation && sentence) {
       statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Tłumaczę na polski...';
       translation = await translateToPolish(sentence);
     }
 
-    document.getElementById('field-sentence').value = sentence;
+    document.getElementById('field-sentence').value    = sentence;
     document.getElementById('field-translation').value = translation;
     if (definition) document.getElementById('field-definition').value = definition;
 
@@ -1848,13 +1834,13 @@ deadline → The deadline is Friday, so she stayed late at work.`,
     if (wordMeaning) document.getElementById('field-word-meaning').value = wordMeaning;
 
     updateWordPreview();
-    statusEl.className = 'ai-status ok';
+    statusEl.className   = 'ai-status ok';
     statusEl.textContent = sentence && translation
       ? '✓ Gotowe! Sprawdź i popraw jeśli trzeba.'
       : sentence ? '✓ Znaleziono zdanie — dodaj tłumaczenie ręcznie.' : '✓ Gotowe.';
 
   } catch(err) {
-    statusEl.className = 'ai-status error';
+    statusEl.className   = 'ai-status error';
     statusEl.textContent = '✗ Błąd połączenia. Sprawdź internet i spróbuj ponownie.';
   } finally {
     btn.disabled = false;
