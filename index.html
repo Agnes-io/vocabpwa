@@ -944,7 +944,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v50';
+const CACHE='vocab-v51';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/'])));
   self.skipWaiting();
@@ -1748,7 +1748,7 @@ deadline → The deadline was Friday, so he stayed late at the office.
 table → She put her coffee on the table and opened her laptop.
 run → He goes for a run in the park every morning before breakfast.
 awestruck → She stood awestruck in front of the huge waterfall.
-bolster → The extra training helped to bolster her confidence before the exam.\`,
+bolster → The extra training helped to bolster her confidence before the exam.`,
             messages: [{
               role: 'user',
               content: `Word: "${w}". Start with: ${subj}. Setting: ${ctx}.${avoid} Write the sentence.`
