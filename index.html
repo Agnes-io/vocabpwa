@@ -1706,7 +1706,8 @@ async function generateWithAI(word, prevSentence = '') {
           'Set the sentence outdoors or on the street.'
         ];
         const variation = regenVariations[Math.floor(Math.random() * regenVariations.length)];
-        const userMsg = `Write one natural example sentence for this word: ${w}\n\nUse only the most common everyday meaning of this word.\n${variation}\nReturn only the sentence, nothing else.`;
+        const prevNote = prevSentence ? `\nDo NOT repeat or reuse this previous sentence: "${prevSentence}"\nWrite a completely different sentence with a different subject and verb.` : '';
+        const userMsg = `Write one example sentence for the word: "${w}"\n\nCONTEXT: ${variation}${prevNote}\n\nReturn ONLY the sentence. No explanation. No quotes.`;
         const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           signal: ctrl.signal,
@@ -1717,9 +1718,44 @@ async function generateWithAI(word, prevSentence = '') {
             'anthropic-dangerous-direct-browser-access': 'true'
           },
           body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 60,
-            system: 'You are an English vocabulary teacher creating flashcard example sentences. Your sentences must follow these rules exactly:\n\n1. Use the word in its most common, physical, literal meaning only\n2. Write a natural sentence that a real person would actually say\n3. Maximum 12 words\n4. Use simple everyday situations: home, café, kitchen, office, street, shop\n5. The sentence must make the meaning obvious from context — like a dictionary example\n6. Never use slang, idioms, metaphors, or rare meanings\n7. Return only the sentence — nothing else, no quotes, no explanation\n\nGood examples to imitate (from dictionary.com style):\n- mug → She wrapped her hands around a warm mug of tea.\n- table → They sat around the table and ate dinner together.\n- run → He goes for a run every morning before work.\n- deadline → The deadline for the report is Friday afternoon.\n- invoice → Please send the invoice to the client by email.\n- bear → The bear walked slowly through the forest.\n\nBad examples to never produce:\n- mug → He\'s a gullible mug who believed her again. (slang — wrong)\n- table → The committee tabled the motion indefinitely. (rare meaning — wrong)\n- run → Events precipitated a considerable run on reserves. (too complex — wrong)',
+            model: 'claude-sonnet-4-6',
+            max_tokens: 80,
+            system: `You write example sentences for English vocabulary flashcards. Follow these rules strictly:
+
+RULE 1 — MOST COMMON MEANING ONLY.
+Always use the single most common, everyday meaning. Never use slang, idioms, or rare meanings.
+"mug" = a drinking cup. NOT British slang for a foolish person.
+"table" = a piece of furniture. NOT "to table a motion".
+"bear" = the animal. NOT "to bear responsibility".
+"run" = to move fast on foot. NOT a "run on the bank".
+
+RULE 2 — SENTENCE STRUCTURE.
+- 10 to 15 words maximum
+- Simple grammar: present simple, past simple, or present continuous
+- One clause only — no "although", "despite", "however", "in order to"
+- Natural word order: Subject + Verb + Object
+
+RULE 3 — CONTEXT.
+Use real everyday scenes: kitchen, bedroom, office, café, street, supermarket, park, restaurant.
+The word's meaning must be completely obvious from the sentence alone.
+
+RULE 4 — OUTPUT FORMAT.
+Return only the sentence. No quotes. No explanation. No word label. Just the sentence.
+
+GOOD sentences (imitate this style exactly):
+- mug → She poured hot coffee into her favourite mug.
+- table → They moved the table to the corner of the room.
+- bear → A bear appeared at the edge of the forest.
+- run → She goes for a run in the park every morning.
+- deadline → The report deadline is tomorrow, so he worked late.
+- invoice → She sent the invoice to the client after the meeting.
+- frugal → He was frugal at the supermarket, buying only what he needed.
+- awestruck → She stood awestruck in front of the waterfall.
+
+BAD sentences (never produce these):
+- mug → "He's a gullible mug who believed her again." — slang, wrong meaning
+- table → "The board tabled the motion until next quarter." — rare meaning
+- run → "The concatenation of events precipitated a run on reserves." — too complex`,
             messages: [{ role: 'user', content: userMsg }]
           })
         });
