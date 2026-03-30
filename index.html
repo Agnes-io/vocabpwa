@@ -1705,9 +1705,11 @@ async function generateWithAI(word, prevSentence = '') {
           'Set the sentence in a café, shop, or restaurant.',
           'Set the sentence outdoors or on the street.'
         ];
+        const subjects = ['She','He','They','Anna','Tom','The child','My friend'];
+        const subj = subjects[Math.floor(Math.random() * subjects.length)];
         const variation = regenVariations[Math.floor(Math.random() * regenVariations.length)];
-        const prevNote = prevSentence ? `\nDo NOT repeat or reuse this previous sentence: "${prevSentence}"\nWrite a completely different sentence with a different subject and verb.` : '';
-        const userMsg = `Write one example sentence for the word: "${w}"\n\nCONTEXT: ${variation}${prevNote}\n\nReturn ONLY the sentence. No explanation. No quotes.`;
+        const prevNote = prevSentence ? ` The previous sentence was: "${prevSentence}" — write something completely different with a different verb and situation.` : '';
+        const userMsg = `Word: "${w}"\n\nWrite ONE short English sentence (10-14 words) using "${w}" in its most basic, everyday, physical meaning.\nStart with: ${subj}\nSetting: ${variation}${prevNote}\n\nReturn ONLY the sentence.`;
         const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           signal: ctrl.signal,
@@ -1720,42 +1722,20 @@ async function generateWithAI(word, prevSentence = '') {
           body: JSON.stringify({
             model: 'claude-sonnet-4-6',
             max_tokens: 80,
-            system: `You write example sentences for English vocabulary flashcards. Follow these rules strictly:
+            system: `You create example sentences for English vocabulary flashcards, like a Cambridge or Oxford learner's dictionary.
 
-RULE 1 — MOST COMMON MEANING ONLY.
-Always use the single most common, everyday meaning. Never use slang, idioms, or rare meanings.
-"mug" = a drinking cup. NOT British slang for a foolish person.
-"table" = a piece of furniture. NOT "to table a motion".
-"bear" = the animal. NOT "to bear responsibility".
-"run" = to move fast on foot. NOT a "run on the bank".
+Always use the MOST COMMON, PHYSICAL, LITERAL meaning of the word — what a beginner dictionary shows first.
 
-RULE 2 — SENTENCE STRUCTURE.
-- 10 to 15 words maximum
-- Simple grammar: present simple, past simple, or present continuous
-- One clause only — no "although", "despite", "however", "in order to"
-- Natural word order: Subject + Verb + Object
+Perfect examples:
+mug → She filled her mug with hot tea and sat by the window.
+table → He put his keys on the table near the front door.
+run → She goes for a run in the park every morning.
+bear → A bear walked out of the forest and stopped on the path.
+frugal → He bought only what he needed because he was frugal.
+deadline → The deadline was Friday, so she worked late on Thursday.
+invoice → She sent the invoice to the client after finishing the project.
 
-RULE 3 — CONTEXT.
-Use real everyday scenes: kitchen, bedroom, office, café, street, supermarket, park, restaurant.
-The word's meaning must be completely obvious from the sentence alone.
-
-RULE 4 — OUTPUT FORMAT.
-Return only the sentence. No quotes. No explanation. No word label. Just the sentence.
-
-GOOD sentences (imitate this style exactly):
-- mug → She poured hot coffee into her favourite mug.
-- table → They moved the table to the corner of the room.
-- bear → A bear appeared at the edge of the forest.
-- run → She goes for a run in the park every morning.
-- deadline → The report deadline is tomorrow, so he worked late.
-- invoice → She sent the invoice to the client after the meeting.
-- frugal → He was frugal at the supermarket, buying only what he needed.
-- awestruck → She stood awestruck in front of the waterfall.
-
-BAD sentences (never produce these):
-- mug → "He's a gullible mug who believed her again." — slang, wrong meaning
-- table → "The board tabled the motion until next quarter." — rare meaning
-- run → "The concatenation of events precipitated a run on reserves." — too complex`,
+Return ONLY the sentence. No quotes. No labels. No explanation.`,
             messages: [{ role: 'user', content: userMsg }]
           })
         });
