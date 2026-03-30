@@ -944,7 +944,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v31';
+const CACHE='vocab-v40';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/'])));
   self.skipWaiting();
@@ -1672,11 +1672,11 @@ async function fetchWithTimeout(url, ms) {
 }
 
 async function generateWithAI(word, prevSentence = '') {
-  const statusEl = document.getElementById('ai-status');
-  const btn      = document.getElementById('btn-generate');
-  const w        = word.trim().toLowerCase();
+  const statusEl   = document.getElementById('ai-status');
+  const btn        = document.getElementById('btn-generate');
+  const w          = word.trim().toLowerCase();
   if (!w) {
-    statusEl.className = 'ai-status error';
+    statusEl.className   = 'ai-status error';
     statusEl.textContent = '⚠ Wpisz słówko przed generowaniem.';
     statusEl.style.display = 'block';
     return;
@@ -1686,101 +1686,40 @@ async function generateWithAI(word, prevSentence = '') {
   statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam zdania...';
   statusEl.style.display = 'block';
 
-  const isRegen = prevSentence.length > 0;
-  let sentence    = '';
-  let translation = '';
-  let definition  = '';
+  const isRegen    = prevSentence.length > 0;
+  let sentence     = '';
+  let translation  = '';
+  let definition   = '';
   let partOfSpeech = '';
+
+  // Pomocnicza funkcja — czy zdanie jest "dobre" (nie śmieciowe)
+  function isGoodSentence(s) {
+    if (!s) return false;
+    const wc = s.trim().split(/\s+/).length;
+    if (wc < 4 || wc > 20) return false;
+    // Odrzuć śmieciowe zdania z Free Dictionary (np. "Pure awesome; made of awesome")
+    if (/^(pure |made of |so |very |extremely )\S/i.test(s)) return false;
+    if ((s.match(/;/g) || []).length > 1) return false;
+    // Musi zawierać czasownik (uproszczone sprawdzenie)
+    if (!/\b(is|are|was|were|has|have|had|do|does|did|will|would|can|could|should|go|went|put|left|saw|came|took|made|got|said|found|felt|looked|walked|ran|sat|stood|told|asked|gave|knew|thought|seemed|became|showed|kept|let|began|brought|heard|helped|worked|used|played|opened|started|tried|liked|loved|wanted|needed|turned|called|moved|lived|felt|bought|sent|set|read|led|grew|fell|understood|met)\b/i.test(s)) return false;
+    return true;
+  }
 
   try {
 
-    // ── ŹRÓDŁO 1: Tatoeba ────────────────────────────────────────────────────
-    // Zdania pisane przez native speakerów do nauki języka — najlepsza jakość
-    try {
-      statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam zdań (Tatoeba)...';
-      const tatURL = `https://tatoeba.org/en/api_v0/search?from=eng&to=pol&query=${encodeURIComponent(w)}&trans_filter=limit&orphans=no&unapproved=no`;
-      const tatResp = await fetchWithTimeout(tatURL, 8000);
-      if (tatResp.ok) {
-        const tatData = await tatResp.json();
-        const wRe = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&') + '\\b', 'i');
-        const candidates = [];
-        for (const r of (tatData.results || [])) {
-          const text = (r.text || '').trim();
-          const wc   = text.split(/\s+/).length;
-          const skip = isRegen && text.toLowerCase() === prevSentence.toLowerCase();
-          if (wc >= 5 && wc <= 18 && wRe.test(text) && !skip) {
-            const plTrans = (r.translations || []).flat().find(t => t.lang === 'pol');
-            candidates.push({ text, pl: plTrans?.text || '', wc });
-          }
-        }
-        if (candidates.length > 0) {
-          candidates.sort((a, b) => (b.pl ? 1 : 0) - (a.pl ? 1 : 0) || a.wc - b.wc);
-          const idx  = isRegen ? Math.floor(Math.random() * Math.min(candidates.length, 5)) : 0;
-          const best = candidates[idx];
-          sentence    = best.text.charAt(0).toUpperCase() + best.text.slice(1);
-          if (!/[.!?]$/.test(sentence)) sentence += '.';
-          translation = best.pl;
-        }
-      }
-    } catch(e) { /* Tatoeba niedostępna */ }
-
-    // ── ŹRÓDŁO 2: Free Dictionary API ───────────────────────────────────────
-    try {
-      const dictResp = await fetchWithTimeout(
-        `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`, 6000
-      );
-      if (dictResp.ok) {
-        const dictData = await dictResp.json();
-        const exRe = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&') + '\\b', 'i');
-        const allMeanings = [];
-        for (const entry of dictData) {
-          for (const meaning of entry.meanings) {
-            for (const def of meaning.definitions) {
-              let goodEx = '';
-              if (def.example) {
-                const ex = def.example.trim();
-                const wc = ex.split(/\s+/).length;
-                const skip = isRegen && ex.toLowerCase() === prevSentence.toLowerCase();
-                if (wc >= 4 && wc <= 18 && exRe.test(ex) && !skip) goodEx = ex;
-              }
-              allMeanings.push({ pos: meaning.partOfSpeech || '', def: def.definition || '', ex: goodEx });
-            }
-          }
-        }
-        for (const p of ['noun','verb','adjective','adverb']) {
-          const m = allMeanings.find(m => m.pos === p);
-          if (m) {
-            partOfSpeech = m.pos;
-            definition   = m.def;
-            if (!sentence && m.ex) {
-              sentence = m.ex.charAt(0).toUpperCase() + m.ex.slice(1);
-              if (!/[.!?]$/.test(sentence)) sentence += '.';
-            }
-            break;
-          }
-        }
-        if (!partOfSpeech && allMeanings.length > 0) {
-          partOfSpeech = allMeanings[0].pos;
-          definition   = allMeanings[0].def;
-          if (!sentence && allMeanings[0].ex) {
-            sentence = allMeanings[0].ex.charAt(0).toUpperCase() + allMeanings[0].ex.slice(1);
-            if (!/[.!?]$/.test(sentence)) sentence += '.';
-          }
-        }
-      }
-    } catch(e) { /* słownik niedostępny */ }
-
-    // ── ŹRÓDŁO 3: Claude — gdy brak zdania z zewnętrznych źródeł ────────────
-    if (!sentence && State.claudeApiKey) {
+    // ── ŹRÓDŁO 1: Claude API — ZAWSZE PIERWSZE gdy klucz ustawiony ──────────
+    // Claude daje najlepszą kontrolę nad jakością zdania
+    if (State.claudeApiKey) {
       try {
-        statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie (AI)...';
+        statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie...';
         const ctrl  = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 15000);
-        const subs  = ['She','He','Tom','Anna','My friend','The boy','The woman'];
-        const ctxs  = ['at home','in a café','at work','in a shop','in the park','on the street'];
+        const subs  = ['She','He','Tom','Anna','My sister','The man','The woman','My colleague'];
+        const ctxs  = ['at home','in a café','at work','in the park','in a shop','on the street','during a trip'];
         const subj  = subs[Math.floor(Math.random() * subs.length)];
         const ctx   = ctxs[Math.floor(Math.random() * ctxs.length)];
-        const avoid = isRegen ? ` Do NOT write: "${prevSentence}".` : '';
+        const avoid = isRegen ? ` Previous sentence (do not repeat): "${prevSentence}".` : '';
+
         const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST', signal: ctrl.signal,
           headers: {
@@ -1792,30 +1731,102 @@ async function generateWithAI(word, prevSentence = '') {
           body: JSON.stringify({
             model: 'claude-sonnet-4-6',
             max_tokens: 80,
-            system: `Write example sentences for English vocabulary flashcards. Style: Cambridge Learner's Dictionary.
-Use the most common, physical, literal meaning only. Never slang or rare meanings.
-8–14 words. Simple grammar. One clause. Everyday scene.
-Return ONLY the sentence. No quotes. No labels.
-Examples:
-mug → She filled her mug with hot coffee.
-awesome → The view from the mountain was awesome.
-table → He left his keys on the table by the door.
+            system: `You write example sentences for English vocabulary flashcards. Follow the style of Cambridge Learner's Dictionary.
+
+Rules:
+- 8 to 14 words only
+- Simple grammar: past simple or present simple preferred
+- Real everyday situation: home, café, park, office, shop, travel
+- The word's meaning must be clear from the sentence
+- Return ONLY the sentence — no quotes, no explanation, nothing else
+
+Good examples (imitate exactly):
+awesome → The view from the top of the mountain was truly awesome.
+mug → She wrapped her hands around a warm mug of coffee.
+table → He put his laptop on the table and started working.
 run → She goes for a run in the park every morning.
-bear → A bear walked slowly out of the forest.`,
-            messages: [{ role: 'user', content: `Word: "${w}". Subject: ${subj}. Scene: ${ctx}.${avoid} Write the sentence now.` }]
+frugal → He was frugal at the supermarket, buying only what he needed.
+deadline → The deadline was Friday, so she worked late on Thursday.
+bear → A bear came out of the forest and stopped on the path.
+procrastinate → He kept procrastinating and didn't finish his homework until midnight.`,
+            messages: [{
+              role: 'user',
+              content: `Word: "${w}". Start with: ${subj}. Setting: ${ctx}.${avoid} Write the sentence.`
+            }]
           })
         });
         clearTimeout(timer);
         if (claudeResp.ok) {
           const claudeData = await claudeResp.json();
           const raw = (claudeData.content?.[0]?.text || '').trim();
-          if (raw && raw.toLowerCase() !== prevSentence.toLowerCase()) {
+          if (isGoodSentence(raw) && raw.toLowerCase() !== prevSentence.toLowerCase()) {
             sentence = raw.charAt(0).toUpperCase() + raw.slice(1);
             if (!/[.!?]$/.test(sentence)) sentence += '.';
           }
         }
-      } catch(e) { /* Claude niedostępny */ }
+      } catch(e) { /* Claude niedostępny — próbuj dalej */ }
     }
+
+    // ── ŹRÓDŁO 2: Tatoeba — zdania od native speakerów ──────────────────────
+    if (!sentence) {
+      try {
+        statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam zdań (Tatoeba)...';
+        const tatURL  = `https://tatoeba.org/en/api_v0/search?from=eng&to=pol&query=${encodeURIComponent(w)}&trans_filter=limit&orphans=no&unapproved=no`;
+        const tatResp = await fetchWithTimeout(tatURL, 8000);
+        if (tatResp.ok) {
+          const tatData = await tatResp.json();
+          const wRe     = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+          const candidates = [];
+          for (const r of (tatData.results || [])) {
+            const text = (r.text || '').trim();
+            const skip = isRegen && text.toLowerCase() === prevSentence.toLowerCase();
+            if (isGoodSentence(text) && wRe.test(text) && !skip) {
+              const plTrans = (r.translations || []).flat().find(t => t.lang === 'pol');
+              candidates.push({ text, pl: plTrans?.text || '', wc: text.split(/\s+/).length });
+            }
+          }
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => (b.pl ? 1 : 0) - (a.pl ? 1 : 0) || a.wc - b.wc);
+            const idx   = isRegen ? Math.floor(Math.random() * Math.min(candidates.length, 5)) : 0;
+            const best  = candidates[idx];
+            sentence    = best.text.charAt(0).toUpperCase() + best.text.slice(1);
+            if (!/[.!?]$/.test(sentence)) sentence += '.';
+            translation = best.pl;
+          }
+        }
+      } catch(e) { /* Tatoeba niedostępna */ }
+    }
+
+    // ── ŹRÓDŁO 3: Free Dictionary API — TYLKO definicja, nie zdania ─────────
+    // Zdania z tego API są często śmieciowe (np. "Pure awesome; made of awesome")
+    // Używamy go wyłącznie do pobrania definicji i części mowy
+    try {
+      const dictResp = await fetchWithTimeout(
+        `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`, 6000
+      );
+      if (dictResp.ok) {
+        const dictData = await dictResp.json();
+        const allMeanings = [];
+        for (const entry of dictData) {
+          for (const meaning of entry.meanings) {
+            for (const def of meaning.definitions) {
+              allMeanings.push({
+                pos: meaning.partOfSpeech || '',
+                def: def.definition || ''
+              });
+            }
+          }
+        }
+        for (const p of ['noun','verb','adjective','adverb']) {
+          const m = allMeanings.find(m => m.pos === p);
+          if (m) { partOfSpeech = m.pos; definition = m.def; break; }
+        }
+        if (!partOfSpeech && allMeanings.length > 0) {
+          partOfSpeech = allMeanings[0].pos;
+          definition   = allMeanings[0].def;
+        }
+      }
+    } catch(e) { /* słownik niedostępny */ }
 
     // ── ŹRÓDŁO 4: Fallback szablon ───────────────────────────────────────────
     if (!sentence) sentence = buildContextualSentence(word.trim(), partOfSpeech, definition);
