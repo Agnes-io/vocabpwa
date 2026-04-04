@@ -775,6 +775,7 @@
       </div>
       <div class="divider"></div>
       <div class="section-title">Dane</div>
+      <div style="font-size:11px;opacity:0.4;margin-bottom:8px">wersja v64</div>
       <div class="gap-8">
         <button class="btn-secondary" id="btn-export">Export Backup (JSON)</button>
         <div class="form-group">
@@ -946,7 +947,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v64';
+const CACHE='vocab-v65';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/'])));
   self.skipWaiting();
