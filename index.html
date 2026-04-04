@@ -771,8 +771,8 @@
         <label class="form-label">Google Gemini API Key <span style="font-size:11px;color:var(--success);font-weight:600">BEZPŁATNY</span></label>
         <div style="font-size:12px;opacity:0.7;margin-bottom:6px">Pobierz darmowy klucz: <strong>aistudio.google.com</strong> → Get API key → Create API key. Bez karty kredytowej, 1500 żądań dziennie.</div>
         <div class="api-key-row">
-          <input type="password" class="form-input" id="setting-gemini-key" placeholder="AIza..." autocomplete="off" spellcheck="false">
-          <button class="btn-secondary" id="btn-show-gemini-key" style="padding:8px 14px;white-space:nowrap">Pokaż</button>
+          <input type="text" class="form-input" id="setting-gemini-key" placeholder="AIza..." autocomplete="off" spellcheck="false">
+          <button class="btn-secondary" id="btn-show-gemini-key" style="padding:8px 14px;white-space:nowrap">Ukryj</button>
         </div>
         <div style="font-size:12px;opacity:0.5;margin-top:4px">Klucz zapisywany lokalnie w przeglądarce, nigdy nie wysyłany poza urządzenie.</div>
       </div>
@@ -949,7 +949,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v60';
+const CACHE='vocab-v61';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/'])));
   self.skipWaiting();
