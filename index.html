@@ -954,7 +954,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v56';
+const CACHE='vocab-v57';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/'])));
   self.skipWaiting();
@@ -1741,141 +1741,106 @@ async function generateWithAI(word, prevSentence = '') {
   let definition   = '';
   let partOfSpeech = '';
 
-  // Pick from a list avoiding prevSentence; on regen rotate through candidates
   function pickBest(candidates) {
     if (!candidates.length) return null;
     if (!isRegen) return candidates[0];
     const others = candidates.filter(c => c.toLowerCase() !== prevSentence.toLowerCase());
-    if (others.length) return others[Math.floor(Math.random() * Math.min(others.length, 5))];
-    return candidates[Math.floor(Math.random() * candidates.length)];
+    return others.length
+      ? others[Math.floor(Math.random() * Math.min(others.length, 5))]
+      : candidates[Math.floor(Math.random() * candidates.length)];
+  }
+
+  async function callClaude() {
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    const avoidNote = isRegen && prevSentence ? ` (different from: "${prevSentence}")` : '';
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', signal: ctrl.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': State.claudeApiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 80,
+        system: '',
+        messages: [{ role: 'user', content: `Give me one example sentence for the English word: ${w}${avoidNote}\n\nThe sentence should:\n- be natural and simple, like from Cambridge dictionary\n- be 8-15 words long\n- use the most common everyday meaning of the word\n- make the meaning obvious from context\n\nReply with the sentence only, nothing else.` }]
+      })
+    });
+    clearTimeout(timer);
+    if (!resp.ok) return '';
+    const data = await resp.json();
+    return (data.content?.[0]?.text || '').trim();
   }
 
   try {
 
-    // ── ŹRÓDŁO 1: Merriam-Webster Learner's Dictionary ───────────────────────
-    // Real professionally written example sentences — highest quality
+    // ── ŹRÓDŁO 1: Claude API — zawsze pierwsze, działa dla każdego słowa ─────
+    if (State.claudeApiKey) {
+      try {
+        statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie (Claude)...';
+        const raw = await callClaude();
+        if (raw) {
+          sentence = raw.charAt(0).toUpperCase() + raw.slice(1);
+          if (!/[.!?]$/.test(sentence)) sentence += '.';
+        }
+      } catch(e) { /* Claude niedostępny */ }
+    }
+
+    // ── ŹRÓDŁO 2: Merriam-Webster — profesjonalne zdania ze słownika ─────────
     if (!sentence && State.mwApiKey) {
       try {
         statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam zdań (Merriam-Webster)...';
         const mwResp = await fetchWithTimeout(
-          `https://www.dictionaryapi.com/api/v3/references/learners/json/${encodeURIComponent(w)}?key=${encodeURIComponent(State.mwApiKey)}`,
-          8000
+          `https://www.dictionaryapi.com/api/v3/references/learners/json/${encodeURIComponent(w)}?key=${encodeURIComponent(State.mwApiKey)}`, 8000
         );
         if (mwResp.ok) {
           const mwData = await mwResp.json();
-          const sentences = extractMWSentences(mwData);
-          const wRe = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
-          const good = sentences.filter(s => s && s.split(/\s+/).length >= 5 && wRe.test(s));
+          const wRe  = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+          const good = extractMWSentences(mwData).filter(s => s && s.split(/\s+/).length >= 5 && wRe.test(s));
           const picked = pickBest(good);
           if (picked) {
             sentence = picked.charAt(0).toUpperCase() + picked.slice(1);
             if (!/[.!?]$/.test(sentence)) sentence += '.';
           }
-          // Also grab definition from MW if available
           if (!definition && Array.isArray(mwData) && mwData[0]?.def) {
-            for (const ds of mwData[0].def) {
-              for (const sseq of (ds.sseq || [])) {
-                for (const sense of sseq) {
-                  if (Array.isArray(sense) && sense[0] === 'sense') {
-                    const dt = sense[1]?.dt || [];
-                    for (const item of dt) {
+            outer: for (const ds of mwData[0].def)
+              for (const sseq of (ds.sseq || []))
+                for (const sense of sseq)
+                  if (Array.isArray(sense) && sense[0] === 'sense')
+                    for (const item of (sense[1]?.dt || []))
                       if (item[0] === 'text') {
-                        const cleaned = stripMWMarkup(item[1]).replace(/^:\s*/, '');
-                        if (cleaned.length > 5) { definition = cleaned; break; }
+                        const c = stripMWMarkup(item[1]).replace(/^:\s*/, '');
+                        if (c.length > 5) { definition = c; break outer; }
                       }
-                    }
-                    if (definition) break;
-                  }
-                }
-                if (definition) break;
-              }
-              if (definition) break;
-            }
           }
         }
       } catch(e) { /* MW niedostępny */ }
     }
 
-    // ── ŹRÓDŁO 2: Oxford Learner's Dictionary scraping ────────────────────────
-    // <span class="x"> tags contain example sentences; CORS may block — try anyway
-    if (!sentence) {
-      try {
-        statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam zdań (Oxford)...';
-        const oxURL  = `https://www.oxfordlearnersdictionaries.com/definition/english/${encodeURIComponent(w)}`;
-        const oxResp = await fetchWithTimeout(oxURL, 8000);
-        if (oxResp.ok) {
-          const html = await oxResp.text();
-          const wRe  = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
-          const matches = [...html.matchAll(/<span class="x">(.*?)<\/span>/g)];
-          const sentences = matches
-            .map(m => m[1].replace(/<[^>]+>/g, '').trim())
-            .filter(s => s && s.split(/\s+/).length >= 5 && wRe.test(s));
-          const picked = pickBest(sentences);
-          if (picked) {
-            sentence = picked.charAt(0).toUpperCase() + picked.slice(1);
-            if (!/[.!?]$/.test(sentence)) sentence += '.';
-          }
-        }
-      } catch(e) { /* Oxford CORS blocked or unavailable */ }
-    }
-
-    // ── ŹRÓDŁO 3: Claude API — gdy słowniki nie zadziałały ───────────────────
-    if (!sentence && State.claudeApiKey) {
-      try {
-        statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie (Claude)...';
-        const ctrl  = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 15000);
-        const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST', signal: ctrl.signal,
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': State.claudeApiKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true'
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-6',
-            max_tokens: 80,
-            system: '',
-            messages: [{
-              role: 'user',
-              content: `Give me one example sentence for the English word: ${w}\n\nThe sentence should:\n- be natural and simple, like from Cambridge dictionary\n- be 8-15 words long\n- use the most common everyday meaning of the word\n- make the meaning obvious from context\n\nReply with the sentence only, nothing else.`
-            }]
-          })
-        });
-        clearTimeout(timer);
-        if (claudeResp.ok) {
-          const claudeData = await claudeResp.json();
-          const raw = (claudeData.content?.[0]?.text || '').trim();
-          if (raw && raw.toLowerCase() !== prevSentence.toLowerCase()) {
-            sentence = raw.charAt(0).toUpperCase() + raw.slice(1);
-            if (!/[.!?]$/.test(sentence)) sentence += '.';
-          }
-        }
-      } catch(e) { /* Claude niedostępny — próbuj dalej */ }
-    }
-
-    // ── ŹRÓDŁO 4: Tatoeba — zdania od native speakerów ──────────────────────
+    // ── ŹRÓDŁO 3: Tatoeba — zdania od native speakerów ──────────────────────
     if (!sentence) {
       try {
         statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Szukam zdań (Tatoeba)...';
-        const tatURL  = `https://tatoeba.org/en/api_v0/search?from=eng&to=pol&query=${encodeURIComponent(w)}&trans_filter=limit&orphans=no&unapproved=no`;
-        const tatResp = await fetchWithTimeout(tatURL, 8000);
+        const tatResp = await fetchWithTimeout(
+          `https://tatoeba.org/en/api_v0/search?from=eng&to=pol&query=${encodeURIComponent(w)}&trans_filter=limit&orphans=no&unapproved=no`, 8000
+        );
         if (tatResp.ok) {
           const tatData = await tatResp.json();
-          const wRe     = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+          const wRe = new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
           const candidates = [];
           for (const r of (tatData.results || [])) {
             const text = (r.text || '').trim();
             if (text && text.split(/\s+/).length >= 6 && wRe.test(text)) {
-              const plTrans = (r.translations || []).flat().find(t => t.lang === 'pol');
-              candidates.push({ text, pl: plTrans?.text || '', wc: text.split(/\s+/).length });
+              const pl = (r.translations || []).flat().find(t => t.lang === 'pol')?.text || '';
+              candidates.push({ text, pl, wc: text.split(/\s+/).length });
             }
           }
-          if (candidates.length > 0) {
+          if (candidates.length) {
             candidates.sort((a, b) => (b.pl ? 1 : 0) - (a.pl ? 1 : 0) || a.wc - b.wc);
-            const texts  = candidates.map(c => c.text);
-            const picked = pickBest(texts);
+            const picked = pickBest(candidates.map(c => c.text));
             const best   = candidates.find(c => c.text === picked) || candidates[0];
             sentence    = best.text.charAt(0).toUpperCase() + best.text.slice(1);
             if (!/[.!?]$/.test(sentence)) sentence += '.';
@@ -1885,68 +1850,30 @@ async function generateWithAI(word, prevSentence = '') {
       } catch(e) { /* Tatoeba niedostępna */ }
     }
 
-    // ── ŹRÓDŁO 5: Free Dictionary API — definicja i POS (nie zdania) ─────────
+    // ── ŹRÓDŁO 4: Free Dictionary — tylko definicja ───────────────────────────
     try {
-      const dictResp = await fetchWithTimeout(
-        `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`, 6000
-      );
+      const dictResp = await fetchWithTimeout(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`, 6000);
       if (dictResp.ok) {
-        const dictData = await dictResp.json();
         const allMeanings = [];
-        for (const entry of dictData) {
-          for (const meaning of entry.meanings) {
-            for (const def of meaning.definitions) {
-              allMeanings.push({ pos: meaning.partOfSpeech || '', def: def.definition || '' });
-            }
-          }
-        }
+        for (const entry of await dictResp.json())
+          for (const m of entry.meanings)
+            for (const d of m.definitions)
+              allMeanings.push({ pos: m.partOfSpeech || '', def: d.definition || '' });
         if (!definition) {
-          for (const p of ['noun','verb','adjective','adverb']) {
-            const m = allMeanings.find(m => m.pos === p);
-            if (m) { partOfSpeech = m.pos; definition = m.def; break; }
-          }
-          if (!partOfSpeech && allMeanings.length > 0) {
-            partOfSpeech = allMeanings[0].pos;
-            definition   = allMeanings[0].def;
-          }
+          const m = ['noun','verb','adjective','adverb'].reduce((found, p) => found || allMeanings.find(m => m.pos === p), null) || allMeanings[0];
+          if (m) { partOfSpeech = m.pos; definition = m.def; }
         }
       }
-    } catch(e) { /* słownik niedostępny */ }
+    } catch(e) {}
 
-    // ── ŹRÓDŁO 6: Claude fallback — gdy żadne źródło nie dało zdania ─────────
-    if (!sentence && State.claudeApiKey) {
-      try {
-        statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie (Claude)...';
-        const ctrl  = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 15000);
-        const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST', signal: ctrl.signal,
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': State.claudeApiKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true'
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-6',
-            max_tokens: 80,
-            system: '',
-            messages: [{
-              role: 'user',
-              content: `Give me one example sentence for the English word: ${w}\n\nThe sentence should:\n- be natural and simple, like from Cambridge dictionary\n- be 8-15 words long\n- use the most common everyday meaning of the word\n- make the meaning obvious from context\n\nReply with the sentence only, nothing else.`
-            }]
-          })
-        });
-        clearTimeout(timer);
-        if (claudeResp.ok) {
-          const claudeData = await claudeResp.json();
-          const raw = (claudeData.content?.[0]?.text || '').trim();
-          if (raw) {
-            sentence = raw.charAt(0).toUpperCase() + raw.slice(1);
-            if (!/[.!?]$/.test(sentence)) sentence += '.';
-          }
-        }
-      } catch(e) { /* Claude niedostępny */ }
+    // ── Brak zdania: jeśli nie ma klucza Claude pokaż wskazówkę ──────────────
+    if (!sentence) {
+      statusEl.className   = 'ai-status error';
+      statusEl.textContent = State.claudeApiKey
+        ? '✗ Nie udało się wygenerować zdania. Sprawdź internet i spróbuj ponownie.'
+        : '⚠ Brak zdań w bazie. Ustaw klucz Claude API w Ustawieniach — Claude wygeneruje zdanie dla każdego słowa.';
+      btn.disabled = false;
+      return;
     }
 
     // ── Tłumaczenie ──────────────────────────────────────────────────────────
