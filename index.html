@@ -768,14 +768,14 @@
       <div class="divider"></div>
       <div class="section-title">AI — generowanie zdań</div>
       <div class="form-group">
-        <label class="form-label">Google Gemini API Key <span style="font-size:11px;color:var(--success);font-weight:600">BEZPŁATNY</span></label>
-        <div style="font-size:12px;opacity:0.7;margin-bottom:6px">Pobierz darmowy klucz: <strong>aistudio.google.com</strong> → Get API key → Create API key. Bez karty kredytowej, 1500 żądań dziennie.</div>
-        <input type="text" class="form-input" id="setting-gemini-key" placeholder="AIza..." autocomplete="off" spellcheck="false" style="font-family:monospace;font-size:13px;color:var(--text);background:var(--surface)">
+        <label class="form-label">Groq API Key <span style="font-size:11px;color:var(--success);font-weight:600">BEZPŁATNY</span></label>
+        <div style="font-size:12px;opacity:0.7;margin-bottom:6px">Pobierz darmowy klucz: <strong>console.groq.com</strong> → API Keys → Create API Key. Bez karty kredytowej, działa w Polsce/EU, 14400 żądań dziennie.</div>
+        <input type="text" class="form-input" id="setting-groq-key" placeholder="gsk_..." autocomplete="off" spellcheck="false" style="font-family:monospace;font-size:13px;color:var(--text);background:var(--surface)">
         <div style="font-size:12px;opacity:0.5;margin-top:4px">Klucz zapisywany lokalnie w przeglądarce, nigdy nie wysyłany poza urządzenie.</div>
       </div>
       <div class="divider"></div>
       <div class="section-title">Dane</div>
-      <div style="font-size:11px;opacity:0.4;margin-bottom:8px">wersja v67</div>
+      <div style="font-size:11px;opacity:0.4;margin-bottom:8px">wersja v69</div>
       <div class="gap-8">
         <button class="btn-secondary" id="btn-export">Export Backup (JSON)</button>
         <div class="form-group">
@@ -828,7 +828,7 @@ const State = {
   studyHistory: [],
   exerciseHistory: [],
   settings: { darkMode:false, dailyLimit:20, notificationsEnabled:false, notificationTime:'09:00', lastStudyDate:null, streak:0 },
-  geminiApiKey: '',
+  groqApiKey: '',
   claudeApiKey: '',
   mwApiKey: '',
   session: null,
@@ -870,7 +870,7 @@ function loadState() {
     const h=localStorage.getItem('vocab_study_history'); if(h) State.studyHistory=JSON.parse(h);
     const e=localStorage.getItem('vocab_exercise_history'); if(e) State.exerciseHistory=JSON.parse(e);
     const s=localStorage.getItem('vocab_settings'); if(s) State.settings=Object.assign(State.settings,JSON.parse(s));
-    const kg=localStorage.getItem('vocab_gemini_key'); if(kg) State.geminiApiKey=kg;
+    const kg=localStorage.getItem('vocab_groq_key'); if(kg) State.groqApiKey=kg;
     const k=localStorage.getItem('vocab_claude_key'); if(k) State.claudeApiKey=k;
     const k2=localStorage.getItem('vocab_mw_key'); if(k2) State.mwApiKey=k2;
   } catch(err) { console.error('Load error',err); }
@@ -947,7 +947,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v68';
+const CACHE='vocab-v69';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/'])));
   self.skipWaiting();
@@ -959,6 +959,7 @@ self.addEventListener('activate',e=>e.waitUntil(
 self.addEventListener('fetch',e=>{
   if(e.request.url.startsWith('https://generativelanguage.googleapis.com')) return;
   if(e.request.url.startsWith('https://api.anthropic.com')) return;
+  if(e.request.url.startsWith('https://api.groq.com')) return;
   if(e.request.url.startsWith('https://www.dictionaryapi.com')) return;
   if(e.request.url.startsWith('https://www.oxfordlearnersdictionaries.com')) return;
   if(e.request.method!=='GET') return;
@@ -1748,32 +1749,32 @@ async function generateWithAI(word, prevSentence = '') {
     `\n\nThe sentence should:\n- be natural and simple, like from Cambridge dictionary\n- be 8-15 words long\n- use the most common everyday meaning of the word\n- make the meaning obvious from context\n\nReply with the sentence only, nothing else.`;
 
   async function callAI() {
-    // Gemini — bezpłatny (1500/dzień), klucz z aistudio.google.com
-    if (State.geminiApiKey) {
+    // Groq — bezpłatny (14400/dzień), klucz z console.groq.com, działa w EU/Polsce
+    if (State.groqApiKey) {
       let resp;
       try {
         const ctrl = new AbortController();
         const timer = setTimeout(() => ctrl.abort(), 15000);
-        resp = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${encodeURIComponent(State.geminiApiKey)}`,
-          { method: 'POST', signal: ctrl.signal,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { maxOutputTokens: 100, temperature: 0.7 } }) }
-        );
+        resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST', signal: ctrl.signal,
+          headers: { 'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + State.groqApiKey },
+          body: JSON.stringify({ model: 'llama-3.1-8b-instant',
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 80, temperature: 0.7 }) });
         clearTimeout(timer);
       } catch(e) {
-        throw new Error('Błąd połączenia z Gemini: ' + e.message);
+        throw new Error('Błąd połączenia z Groq: ' + e.message);
       }
       if (resp.ok) {
         const data = await resp.json();
-        const text = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+        const text = (data.choices?.[0]?.message?.content || '').trim();
         if (text) return text;
-        throw new Error('Gemini zwrócił pustą odpowiedź — spróbuj ponownie');
+        throw new Error('Groq zwrócił pustą odpowiedź — spróbuj ponownie');
       } else {
         const err = await resp.json().catch(() => ({}));
         const msg = err?.error?.message || ('HTTP ' + resp.status);
-        throw new Error('Gemini: ' + msg);
+        throw new Error('Groq: ' + msg);
       }
     }
     // Claude — opcjonalny płatny fallback
@@ -1808,7 +1809,7 @@ async function generateWithAI(word, prevSentence = '') {
   try {
 
     // ── ŹRÓDŁO 1: AI (Gemini bezpłatny / Claude) — działa dla każdego słowa ──
-    if (State.geminiApiKey || State.claudeApiKey) {
+    if (State.groqApiKey || State.claudeApiKey) {
       try {
         statusEl.innerHTML = '<span class="ai-spinner">⏳</span> Generuję zdanie...';
         const raw = await callAI();
@@ -1904,9 +1905,9 @@ async function generateWithAI(word, prevSentence = '') {
     // ── Brak zdania: jeśli nie ma klucza Claude pokaż wskazówkę ──────────────
     if (!sentence) {
       statusEl.className   = 'ai-status error';
-      statusEl.textContent = (State.geminiApiKey || State.claudeApiKey)
+      statusEl.textContent = (State.groqApiKey || State.claudeApiKey)
         ? '✗ Nie udało się wygenerować zdania. Sprawdź internet i spróbuj ponownie.'
-        : '⚠ Brak zdań w bazie. Ustaw bezpłatny klucz Google Gemini w Ustawieniach (aistudio.google.com).';
+        : '⚠ Brak zdań w bazie. Ustaw bezpłatny klucz Groq w Ustawieniach (console.groq.com).';
       btn.disabled = false;
       return;
     }
@@ -2111,7 +2112,7 @@ function renderSettings() {
   document.getElementById('setting-limit').value=State.settings.dailyLimit;
   document.getElementById('setting-notif-time').value=State.settings.notificationTime||'09:00';
   document.getElementById('notif-time-wrap').className='notification-time-wrap'+(State.settings.notificationsEnabled?' visible':'');
-  document.getElementById('setting-gemini-key').value=State.geminiApiKey||'';
+  document.getElementById('setting-groq-key').value=State.groqApiKey||'';
 }
 
 // ============ EXPORT / IMPORT ============
@@ -2282,9 +2283,9 @@ function setupEventListeners() {
   document.getElementById('setting-notif-time').addEventListener('change',e=>{
     State.settings.notificationTime=e.target.value; saveSettings();
   });
-  document.getElementById('setting-gemini-key').addEventListener('input',e=>{
-    State.geminiApiKey=e.target.value.trim();
-    localStorage.setItem('vocab_gemini_key', State.geminiApiKey);
+  document.getElementById('setting-groq-key').addEventListener('input',e=>{
+    State.groqApiKey=e.target.value.trim();
+    localStorage.setItem('vocab_groq_key', State.groqApiKey);
   });
   document.getElementById('btn-export').addEventListener('click',exportData);
   document.getElementById('import-json-file').addEventListener('change',e=>{
