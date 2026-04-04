@@ -949,7 +949,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v58';
+const CACHE='vocab-v59';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/'])));
   self.skipWaiting();
@@ -2091,8 +2091,6 @@ function renderSettings() {
   document.getElementById('setting-notif-time').value=State.settings.notificationTime||'09:00';
   document.getElementById('notif-time-wrap').className='notification-time-wrap'+(State.settings.notificationsEnabled?' visible':'');
   document.getElementById('setting-gemini-key').value=State.geminiApiKey||'';
-  document.getElementById('setting-mw-key') && (document.getElementById('setting-mw-key').value=State.mwApiKey||'');
-  document.getElementById('setting-claude-key') && (document.getElementById('setting-claude-key').value=State.claudeApiKey||'');
 }
 
 // ============ EXPORT / IMPORT ============
