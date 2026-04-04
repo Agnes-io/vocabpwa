@@ -770,10 +770,7 @@
       <div class="form-group">
         <label class="form-label">Google Gemini API Key <span style="font-size:11px;color:var(--success);font-weight:600">BEZPŁATNY</span></label>
         <div style="font-size:12px;opacity:0.7;margin-bottom:6px">Pobierz darmowy klucz: <strong>aistudio.google.com</strong> → Get API key → Create API key. Bez karty kredytowej, 1500 żądań dziennie.</div>
-        <div class="api-key-row">
-          <input type="text" class="form-input" id="setting-gemini-key" placeholder="AIza..." autocomplete="off" spellcheck="false">
-          <button class="btn-secondary" id="btn-show-gemini-key" style="padding:8px 14px;white-space:nowrap">Ukryj</button>
-        </div>
+        <input type="text" class="form-input" id="setting-gemini-key" placeholder="AIza..." autocomplete="off" spellcheck="false" style="font-family:monospace;font-size:13px;color:var(--text);background:var(--surface)">
         <div style="font-size:12px;opacity:0.5;margin-top:4px">Klucz zapisywany lokalnie w przeglądarce, nigdy nie wysyłany poza urządzenie.</div>
       </div>
       <div class="divider"></div>
@@ -949,7 +946,7 @@ if (window.speechSynthesis) {
 function registerServiceWorker() {
   if(!('serviceWorker' in navigator)) return;
   const swCode=`
-const CACHE='vocab-v62';
+const CACHE='vocab-v63';
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE).then(c=>c.addAll([location.pathname||'/'])));
   self.skipWaiting();
@@ -2287,12 +2284,6 @@ function setupEventListeners() {
   document.getElementById('setting-gemini-key').addEventListener('input',e=>{
     State.geminiApiKey=e.target.value.trim();
     localStorage.setItem('vocab_gemini_key', State.geminiApiKey);
-  });
-  document.getElementById('btn-show-gemini-key').addEventListener('click',()=>{
-    const inp=document.getElementById('setting-gemini-key');
-    const btn=document.getElementById('btn-show-gemini-key');
-    inp.type=inp.type==='password'?'text':'password';
-    btn.textContent=inp.type==='password'?'Pokaż':'Ukryj';
   });
   document.getElementById('btn-export').addEventListener('click',exportData);
   document.getElementById('import-json-file').addEventListener('change',e=>{
